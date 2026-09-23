@@ -1,12 +1,21 @@
 import { z } from "zod";
 import { SalidaInvalidaError } from "@/lib/ia/llm";
-import { sugerirVacantes } from "@/lib/ia/sugeridor";
+import { sugerenciasGuardadasDe, sugerirVacantes } from "@/lib/ia/sugeridor";
 
-// Sugiere otras vacantes a un candidato no seleccionado (agente 6).
-// Mientras no exista la migración de sugerencias_vacante, NO se guardan.
+// Sugerencias de vacantes para un candidato no seleccionado (agente 6).
+// GET: lo guardado (sin regenerar). POST: sugiere y reemplaza las 'sugerida'
+// anteriores; 'aceptada' y 'descartada' no se tocan.
 export const maxDuration = 120;
 
 const Cuerpo = z.object({ candidato_vacante_id: z.guid() });
+
+export async function GET(req: Request) {
+  const p = Cuerpo.safeParse({ candidato_vacante_id: new URL(req.url).searchParams.get("candidato_vacante_id") });
+  if (!p.success) return Response.json({ error: "Datos inválidos" }, { status: 400 });
+  const r = await sugerenciasGuardadasDe(p.data.candidato_vacante_id);
+  if ("error" in r && r.error) return Response.json({ error: "Candidato no encontrado en esa vacante" }, { status: 404 });
+  return Response.json(r);
+}
 
 export async function POST(req: Request) {
   const p = Cuerpo.safeParse(await req.json().catch(() => null));

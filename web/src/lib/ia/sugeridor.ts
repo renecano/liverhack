@@ -112,20 +112,96 @@ function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante }[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Persistencia (pendiente de Persona A).
-// TODO(migración A): cuando exista unique (candidato_id, vacante_id_sugerida):
-//   1) upsert de `sugerencias` con onConflict "candidato_id,vacante_id_sugerida",
-//      SIN pisar filas en 'aceptada'/'descartada' (esas vacantes ya se excluyen
-//      antes de sugerir; ver `decididas` en sugerirVacantes);
-//   2) delete from sugerencias_vacante where candidato_id = X and estatus = 'sugerida'
-//      and vacante_id_sugerida not in (las nuevas).
-// sugerencias_vacante.motivo es solo texto: guardar `${motivo} (fuente: ficha · ${campo_ficha})`
-// para no perder la cita del campo usado.
-// Nunca tocar 'aceptada' ni 'descartada'. Hasta entonces NO escribe en sugerencias_vacante.
+// Persistencia: unique (candidato_id, vacante_id_sugerida) de Persona A.
+// Nunca toca filas en 'aceptada' o 'descartada' (decisiones humanas):
+//  - cada sugerencia primero intenta UPDATE solo si la fila sigue en 'sugerida';
+//  - si no existía, INSERT con upsert ignoreDuplicates (si alguien la decidió
+//    mientras tanto, el conflicto la deja intacta);
+//  - al final borra las 'sugerida' viejas que ya no salieron en esta corrida.
+// motivo es solo texto: se guarda con su cita "(fuente: ficha · campo)".
 // ---------------------------------------------------------------------------
-export async function guardarSugerencias(p: { candidatoId: string; sugerencias: Sugerencia[] }): Promise<{ persistido: boolean }> {
-  void p; // se usará en el upsert de arriba
-  return { persistido: false };
+const FUENTE = /\s*\(fuente: ficha · ([a-z_]+)\)\s*$/;
+export const motivoConFuente = (s: Pick<Sugerencia, "motivo" | "campo_ficha">) => `${s.motivo} (fuente: ficha · ${s.campo_ficha})`;
+
+export async function guardarSugerencias(p: {
+  candidatoId: string;
+  sugerencias: Sugerencia[];
+}): Promise<{ persistido: boolean; insertadas: number; actualizadas: number; borradas: number }> {
+  const sb = supabaseAdmin();
+  const ts = new Date().toISOString();
+  let insertadas = 0;
+  let actualizadas = 0;
+
+  for (const s of p.sugerencias) {
+    const fila = { score: s.score, motivo: motivoConFuente(s), ts };
+    const up = await sb
+      .from("sugerencias_vacante")
+      .update(fila)
+      .eq("candidato_id", p.candidatoId)
+      .eq("vacante_id_sugerida", s.vacante_id_sugerida)
+      .eq("estatus", "sugerida")
+      .select("id");
+    if (up.error) throw new Error(`sugerencias_vacante: ${up.error.message}`);
+    if (up.data.length) {
+      actualizadas++;
+      continue;
+    }
+    const ins = await sb
+      .from("sugerencias_vacante")
+      .upsert(
+        { candidato_id: p.candidatoId, vacante_id_sugerida: s.vacante_id_sugerida, estatus: "sugerida", ...fila },
+        { onConflict: "candidato_id,vacante_id_sugerida", ignoreDuplicates: true },
+      )
+      .select("id");
+    if (ins.error) throw new Error(`sugerencias_vacante: ${ins.error.message}`);
+    insertadas += ins.data.length;
+  }
+
+  let del = sb.from("sugerencias_vacante").delete().eq("candidato_id", p.candidatoId).eq("estatus", "sugerida");
+  if (p.sugerencias.length) {
+    del = del.not("vacante_id_sugerida", "in", `(${p.sugerencias.map((s) => s.vacante_id_sugerida).join(",")})`);
+  }
+  const borr = await del.select("id");
+  if (borr.error) throw new Error(`sugerencias_vacante: ${borr.error.message}`);
+
+  return { persistido: true, insertadas, actualizadas, borradas: borr.data.length };
+}
+
+export interface SugerenciaGuardada {
+  vacante_id_sugerida: string;
+  vacante_titulo: string;
+  score: number | null;
+  motivo: string;
+  campo_ficha: string | null;
+  estatus: "sugerida" | "aceptada" | "descartada";
+  ts: string;
+}
+
+// Lectura sin regenerar: todas las sugerencias del candidato (incluidas las ya decididas).
+export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
+  const sb = supabaseAdmin();
+  const cv = await sb.from("candidato_vacante").select("candidato_id").eq("id", candidatoVacanteId).maybeSingle();
+  if (cv.error) throw new Error(cv.error.message);
+  if (!cv.data) return { error: "no_encontrado" as const };
+  const { data, error } = await sb
+    .from("sugerencias_vacante")
+    .select("vacante_id_sugerida, score, motivo, estatus, ts, vacantes(titulo)")
+    .eq("candidato_id", cv.data.candidato_id)
+    .order("score", { ascending: false });
+  if (error) throw new Error(error.message);
+  const sugerencias: SugerenciaGuardada[] = (data ?? []).map((r) => {
+    const m = (r.motivo ?? "").match(FUENTE);
+    return {
+      vacante_id_sugerida: r.vacante_id_sugerida,
+      vacante_titulo: (r.vacantes as unknown as { titulo: string } | null)?.titulo ?? "(vacante)",
+      score: r.score,
+      motivo: m ? (r.motivo as string).replace(FUENTE, "") : (r.motivo ?? ""),
+      campo_ficha: m ? m[1] : null,
+      estatus: r.estatus,
+      ts: r.ts,
+    };
+  });
+  return { sugerencias };
 }
 
 export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) {
@@ -227,7 +303,8 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
     );
   }
 
-  const { persistido } = await guardarSugerencias({ candidatoId, sugerencias });
+  const guardado = await guardarSugerencias({ candidatoId, sugerencias });
+  const { persistido } = guardado;
 
   await registrarAudit({
     actor,
@@ -247,6 +324,7 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
       vacantes_filtradas: filtros,
       sugerencias: sugerencias.map((s) => ({ vacante_id: s.vacante_id_sugerida, score: s.score })),
       persistido,
+      filas: { insertadas: guardado.insertadas, actualizadas: guardado.actualizadas, borradas: guardado.borradas },
       evaluacion_ciega: { campos_ocultados: ocultados },
     },
   });

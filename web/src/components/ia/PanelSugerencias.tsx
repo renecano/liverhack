@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import type { Sugerencia } from "@/lib/ia/schemas";
+import { useEffect, useState } from "react";
+import type { SugerenciaGuardada } from "@/lib/ia/sugeridor";
 
 type Estado =
-  | { tipo: "inicial" }
   | { tipo: "cargando" }
-  | { tipo: "ok"; sugerencias: Sugerencia[]; persistido: boolean; consideradas: number }
+  | { tipo: "listo"; sugerencias: SugerenciaGuardada[]; consideradas?: number }
   | { tipo: "error"; mensaje: string; detalles?: string[] };
 
 const CAMPO: Record<string, string> = {
@@ -23,13 +22,41 @@ const CAMPO: Record<string, string> = {
   evidencia_no_negociables: "evidencia de no negociables",
 };
 
-// Reubicación de un candidato no seleccionado: sugiere otras vacantes abiertas.
-// Solo sugiere; no mueve al candidato ni envía nada.
+const ESTATUS: Record<SugerenciaGuardada["estatus"], string> = {
+  sugerida: "bg-stone-100 text-stone-700",
+  aceptada: "bg-green-100 text-green-900",
+  descartada: "bg-stone-200 text-stone-500 line-through",
+};
+
+async function leerGuardadas(candidatoVacanteId: string, consideradas?: number): Promise<Estado> {
+  try {
+    const r = await fetch(`/api/ia/sugerencias?candidato_vacante_id=${candidatoVacanteId}`);
+    const j = await r.json();
+    return r.ok ? { tipo: "listo", sugerencias: j.sugerencias, consideradas } : { tipo: "error", mensaje: j.error ?? "Error" };
+  } catch {
+    return { tipo: "error", mensaje: "No se pudo contactar al servidor" };
+  }
+}
+
+// Reubicación de un candidato no seleccionado. Al abrir muestra lo guardado;
+// "Volver a sugerir" recalcula y reemplaza las 'sugerida'. Solo sugiere: no mueve
+// al candidato ni envía nada.
 export function PanelSugerencias({ candidatoVacanteId }: { candidatoVacanteId: string }) {
-  const [estado, setEstado] = useState<Estado>({ tipo: "inicial" });
+  const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
+  const [sugiriendo, setSugiriendo] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    leerGuardadas(candidatoVacanteId).then((e) => {
+      if (vivo) setEstado(e);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [candidatoVacanteId]);
 
   async function sugerir() {
-    setEstado({ tipo: "cargando" });
+    setSugiriendo(true);
     try {
       const r = await fetch("/api/ia/sugerencias", {
         method: "POST",
@@ -37,41 +64,33 @@ export function PanelSugerencias({ candidatoVacanteId }: { candidatoVacanteId: s
         body: JSON.stringify({ candidato_vacante_id: candidatoVacanteId }),
       });
       const j = await r.json();
-      setEstado(
-        r.ok
-          ? { tipo: "ok", sugerencias: j.sugerencias, persistido: j.persistido, consideradas: j.consideradas }
-          : { tipo: "error", mensaje: j.error ?? "Error", detalles: j.detalles },
-      );
+      if (r.ok) setEstado(await leerGuardadas(candidatoVacanteId, j.consideradas));
+      else setEstado({ tipo: "error", mensaje: j.error ?? "Error", detalles: j.detalles });
     } catch {
       setEstado({ tipo: "error", mensaje: "No se pudo contactar al servidor" });
+    } finally {
+      setSugiriendo(false);
     }
   }
 
+  const sugerencias = estado.tipo === "listo" ? estado.sugerencias : [];
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">Otras vacantes para su perfil</p>
         <button
           onClick={sugerir}
-          disabled={estado.tipo === "cargando"}
+          disabled={sugiriendo || estado.tipo === "cargando"}
           className="whitespace-nowrap rounded-sm bg-[var(--lh-accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110 disabled:opacity-60"
         >
-          {estado.tipo === "cargando" ? "Buscando…" : estado.tipo === "ok" ? "Volver a sugerir" : "Sugerir vacantes"}
+          {sugiriendo ? "Buscando…" : sugerencias.length ? "Volver a sugerir" : "Sugerir vacantes"}
         </button>
-        {estado.tipo === "ok" && (
-          <span className="text-[11px] text-[var(--lh-muted)]">
-            {estado.consideradas} vacantes evaluadas
-            {!estado.persistido && " · aún no se guardan (pendiente migración)"}
-          </span>
+        {estado.tipo === "listo" && estado.consideradas !== undefined && (
+          <span className="text-[11px] text-[var(--lh-muted)]">{estado.consideradas} vacantes evaluadas</span>
         )}
       </div>
 
-      {estado.tipo === "inicial" && (
-        <p className="text-xs text-[var(--lh-muted)]">
-          Compara el perfil anonimizado con las vacantes abiertas (sin la suya) y propone hasta 3. Solo es una sugerencia:
-          no mueve al candidato ni envía nada.
-        </p>
-      )}
+      {estado.tipo === "cargando" && <p className="text-xs text-[var(--lh-muted)]">Cargando sugerencias guardadas…</p>}
       {estado.tipo === "error" && (
         <div className="rounded-sm border border-[var(--lh-bad)] bg-red-50 p-3 text-xs">
           <p className="font-medium text-[var(--lh-bad)]">{estado.mensaje}</p>
@@ -84,22 +103,30 @@ export function PanelSugerencias({ candidatoVacanteId }: { candidatoVacanteId: s
           )}
         </div>
       )}
-      {estado.tipo === "ok" && estado.sugerencias.length === 0 && (
-        <p className="text-xs text-[var(--lh-muted)]">Ninguna vacante abierta encaja lo suficiente con este perfil.</p>
+      {estado.tipo === "listo" && sugerencias.length === 0 && (
+        <p className="text-xs text-[var(--lh-muted)]">
+          Sin sugerencias guardadas. La IA compara el perfil anonimizado con las vacantes abiertas (sin la suya) y propone
+          hasta 3; puede no encontrar ninguna que encaje.
+        </p>
       )}
-      {estado.tipo === "ok" && estado.sugerencias.length > 0 && (
+      {sugerencias.length > 0 && (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {estado.sugerencias.map((s) => (
+          {sugerencias.map((s) => (
             <li key={s.vacante_id_sugerida} className="rounded-sm border border-[var(--lh-rule)] bg-white p-3 text-[13px]">
               <div className="flex items-baseline justify-between gap-2">
                 <p className="font-medium">{s.vacante_titulo}</p>
-                <span className="num shrink-0 text-lg font-medium text-[var(--lh-accent)]">{s.score}</span>
+                <span className="num shrink-0 text-lg font-medium text-[var(--lh-accent)]">{s.score ?? "—"}</span>
               </div>
               <div className="mb-2 mt-1 h-1 rounded-full bg-stone-200">
-                <div className="h-1 rounded-full bg-[var(--lh-ink)]" style={{ width: `${s.score}%` }} />
+                <div className="h-1 rounded-full bg-[var(--lh-ink)]" style={{ width: `${s.score ?? 0}%` }} />
               </div>
               <p className="leading-snug text-[var(--lh-ink-2)]">{s.motivo}</p>
-              <p className="num mt-1 text-[11px] text-[var(--lh-muted)]">↳ fuente: ficha · {CAMPO[s.campo_ficha] ?? s.campo_ficha}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className={`rounded-sm px-1.5 py-0.5 ${ESTATUS[s.estatus]}`}>{s.estatus}</span>
+                {s.campo_ficha && (
+                  <span className="num text-[var(--lh-muted)]">↳ fuente: ficha · {CAMPO[s.campo_ficha] ?? s.campo_ficha}</span>
+                )}
+              </div>
             </li>
           ))}
         </ul>

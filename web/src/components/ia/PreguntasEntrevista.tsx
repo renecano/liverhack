@@ -1,9 +1,9 @@
-import type { Pregunta } from "@/lib/ia/schemas";
+import type { PreguntaGuardada } from "@/lib/ia/schemas";
 
 // Vista de solo lectura de las preguntas de entrevista de un candidato.
 // Sin estado ni fetch: la pantalla del entrevistador puede reutilizarla tal cual.
 
-const BANDERA: Record<NonNullable<Pregunta["bandera"]>, { texto: string; clase: string }> = {
+const BANDERA: Record<string, { texto: string; clase: string }> = {
   no_negociable_parcial: { texto: "Valida no negociable parcial", clase: "bg-amber-100 text-amber-900" },
   no_negociable_no_cumple: { texto: "Valida no negociable no cumplido", clase: "bg-red-100 text-red-900" },
   confirmacion_no_negociable: { texto: "Confirma no negociable", clase: "bg-green-100 text-green-900" },
@@ -27,7 +27,7 @@ export function PreguntasEntrevista({
   preguntas,
   noNegociables,
 }: {
-  preguntas: Pregunta[];
+  preguntas: PreguntaGuardada[];
   noNegociables: { id: string; texto: string }[];
 }) {
   const nn = new Map(noNegociables.map((n) => [n.id, n.texto]));
@@ -38,24 +38,32 @@ export function PreguntasEntrevista({
           <span className="num mt-0.5 w-5 shrink-0 text-right text-xs text-[var(--lh-muted)]">{i + 1}.</span>
           <div className="min-w-0 space-y-1 text-[13px] leading-snug">
             <p className="font-medium text-[var(--lh-ink)]">{p.pregunta}</p>
-            <p className="text-[var(--lh-ink-2)]">
-              <span className="text-[var(--lh-muted)]">Objetivo:</span> {p.objetivo}
-            </p>
+            {p.objetivo && (
+              <p className="text-[var(--lh-ink-2)]">
+                <span className="text-[var(--lh-muted)]">Objetivo:</span> {p.objetivo}
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <span className="rounded-sm bg-stone-100 px-1.5 py-0.5 font-[family-name:var(--font-data)]">
-                {p.competencia}
-              </span>
-              {p.bandera && (
-                <span className={`rounded-sm px-1.5 py-0.5 font-medium ${BANDERA[p.bandera].clase}`}>
-                  {BANDERA[p.bandera].texto}
+              {p.competencia && (
+                <span className="rounded-sm bg-stone-100 px-1.5 py-0.5 font-[family-name:var(--font-data)]">
+                  {p.competencia}
                 </span>
               )}
-              <span className="text-[var(--lh-muted)]">
-                ↳ motivo:{" "}
-                {p.origen.tipo === "no_negociable"
-                  ? `no negociable «${nn.get(p.origen.referencia) ?? p.origen.referencia}»`
-                  : `ficha · ${CAMPO[p.origen.referencia] ?? p.origen.referencia}`}
-              </span>
+              {p.bandera && (
+                <span
+                  className={`rounded-sm px-1.5 py-0.5 font-medium ${BANDERA[p.bandera]?.clase ?? "bg-stone-200 text-stone-800"}`}
+                >
+                  {BANDERA[p.bandera]?.texto ?? p.bandera}
+                </span>
+              )}
+              {p.origen && (
+                <span className="text-[var(--lh-muted)]">
+                  ↳ motivo:{" "}
+                  {p.origen.tipo === "no_negociable"
+                    ? `no negociable «${nn.get(p.origen.referencia) ?? p.origen.referencia}»`
+                    : `ficha · ${CAMPO[p.origen.referencia] ?? p.origen.referencia}`}
+                </span>
+              )}
             </div>
           </div>
         </li>

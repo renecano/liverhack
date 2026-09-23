@@ -127,6 +127,16 @@ export const Pregunta = z.object({
 });
 export type Pregunta = z.infer<typeof Pregunta>;
 
+// Lectura de lo guardado: tolera sets del seed o manuales (sin `origen`, bandera libre).
+export const PreguntaGuardada = z.object({
+  pregunta: z.string(),
+  objetivo: z.string().optional(),
+  competencia: z.string().optional(),
+  bandera: z.string().optional(),
+  origen: OrigenPregunta.optional(),
+});
+export type PreguntaGuardada = z.infer<typeof PreguntaGuardada>;
+
 // Salida cruda del LLM: sin opcionales (structured outputs strict); bandera nullable.
 export const SalidaPreguntasLLM = z.object({
   preguntas: z.array(

@@ -6,6 +6,7 @@ import { MODELO_EXTRACCION } from "./openai";
 import {
   CAMPOS_FICHA_ORIGEN,
   Pregunta,
+  PreguntaGuardada,
   SalidaPreguntasLLM,
   type CumpleNoNegociable,
   type Ficha,
@@ -237,43 +238,95 @@ export async function generarPreguntas(e: EntradaPreguntas): Promise<SalidaPregu
 }
 
 // ---------------------------------------------------------------------------
-// Persistencia (pendiente de Persona A).
-// TODO(migración A): cuando exista preguntas_entrevista.tipo + unique
-// (vacante_id, candidato_id, tipo), esto pasa a ser:
-//   supabaseAdmin().from("preguntas_entrevista").upsert(
-//     { vacante_id, candidato_id, tipo, preguntas, generado_por: "ia", ts: new Date().toISOString() },
-//     { onConflict: "vacante_id,candidato_id,tipo" })
-// Hasta entonces NO escribe en preguntas_entrevista.
+// Persistencia: un set por (vacante_id, candidato_id, tipo) — unique de Persona A
+// (migración 20260923221237). Regenerar reemplaza el set, no lo duplica.
+// La columna preguntas_entrevista.origen (por fila) se deja en null: el origen
+// real vive en cada pregunta dentro del jsonb.
 // ---------------------------------------------------------------------------
 export async function guardarPreguntas(p: {
   vacanteId: string;
   candidatoId: string;
   tipo: TipoEntrevista;
   preguntas: Pregunta[];
-}): Promise<{ persistido: boolean }> {
-  void p; // se usará en el upsert de arriba
-  return { persistido: false };
+}): Promise<{ persistido: boolean; ts: string }> {
+  const ts = new Date().toISOString();
+  const { error } = await supabaseAdmin()
+    .from("preguntas_entrevista")
+    .upsert(
+      { vacante_id: p.vacanteId, candidato_id: p.candidatoId, tipo: p.tipo, preguntas: p.preguntas, generado_por: "ia", ts },
+      { onConflict: "vacante_id,candidato_id,tipo" },
+    );
+  if (error) throw new Error(`preguntas_entrevista: ${error.message}`);
+  return { persistido: true, ts };
 }
 
-// Carga los datos de un candidato_vacante, genera, (no) guarda y audita.
-export async function generarPreguntasParaCandidato(candidatoVacanteId: string, tipo: TipoEntrevista, actor: Actor) {
-  const sb = supabaseAdmin();
-  const cv = await sb
+export interface SetPreguntasGuardado {
+  tipo: TipoEntrevista;
+  preguntas: PreguntaGuardada[];
+  generado_por: "ia" | "manual";
+  ts: string;
+}
+
+// Lectura sin regenerar (panel de la lista y, después, la vista del entrevistador).
+export async function obtenerPreguntasGuardadas(
+  vacanteId: string,
+  candidatoId: string,
+  tipo: TipoEntrevista,
+): Promise<SetPreguntasGuardado | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("preguntas_entrevista")
+    .select("tipo, preguntas, generado_por, ts")
+    .eq("vacante_id", vacanteId)
+    .eq("candidato_id", candidatoId)
+    .eq("tipo", tipo)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  // Tolerante: los sets del seed o manuales no traen `origen` por pregunta.
+  const preguntas = PreguntaGuardada.array().safeParse(data.preguntas);
+  return {
+    tipo: data.tipo,
+    preguntas: preguntas.success ? preguntas.data : [],
+    generado_por: data.generado_por,
+    ts: data.ts,
+  };
+}
+
+async function candidatoVacante(candidatoVacanteId: string) {
+  const { data, error } = await supabaseAdmin()
     .from("candidato_vacante")
     .select("id, candidato_id, vacante_id, ficha, cumple_no_negociables, candidatos(nombre), vacantes(titulo, descripcion)")
     .eq("id", candidatoVacanteId)
     .maybeSingle();
-  if (cv.error) throw new Error(cv.error.message);
-  if (!cv.data) return { error: "no_encontrado" as const };
+  if (error) throw new Error(error.message);
+  return data;
+}
 
-  const ficha = (cv.data.ficha ?? {}) as Partial<Ficha>;
+export async function preguntasGuardadasDe(candidatoVacanteId: string, tipo: TipoEntrevista) {
+  const cv = await candidatoVacante(candidatoVacanteId);
+  if (!cv) return { error: "no_encontrado" as const };
+  return { set: await obtenerPreguntasGuardadas(cv.vacante_id, cv.candidato_id, tipo) };
+}
+
+// Carga los datos de un candidato_vacante, genera, guarda y audita.
+export async function generarPreguntasParaCandidato(candidatoVacanteId: string, tipo: TipoEntrevista, actor: Actor) {
+  const sb = supabaseAdmin();
+  const cv = await candidatoVacante(candidatoVacanteId);
+  if (!cv) return { error: "no_encontrado" as const };
+
+  const ficha = (cv.ficha ?? {}) as Partial<Ficha>;
   if (!ficha.descripcion) return { error: "sin_ficha" as const };
 
-  const nn = await sb.from("no_negociables").select("id, texto, tipo").eq("vacante_id", cv.data.vacante_id).order("id");
+  // Un set escrito a mano es trabajo humano: la IA no lo sobrescribe.
+  // Se revisa antes de llamar al modelo para no gastar en una generación que no se guardaría.
+  const previo = await obtenerPreguntasGuardadas(cv.vacante_id, cv.candidato_id, tipo);
+  if (previo?.generado_por === "manual") return { error: "manual" as const };
+
+  const nn = await sb.from("no_negociables").select("id, texto, tipo").eq("vacante_id", cv.vacante_id).order("id");
   if (nn.error) throw new Error(nn.error.message);
 
-  const candidato = cv.data.candidatos as unknown as { nombre: string };
-  const vacante = cv.data.vacantes as unknown as { titulo: string; descripcion: string | null };
+  const candidato = cv.candidatos as unknown as { nombre: string };
+  const vacante = cv.vacantes as unknown as { titulo: string; descripcion: string | null };
 
   const salida = await generarPreguntas({
     nombreCandidato: candidato.nombre,
@@ -281,12 +334,12 @@ export async function generarPreguntasParaCandidato(candidatoVacanteId: string, 
     vacante,
     noNegociables: nn.data ?? [],
     ficha,
-    cumple: (cv.data.cumple_no_negociables ?? []) as CumpleNoNegociable[],
+    cumple: (cv.cumple_no_negociables ?? []) as CumpleNoNegociable[],
   });
 
-  const { persistido } = await guardarPreguntas({
-    vacanteId: cv.data.vacante_id,
-    candidatoId: cv.data.candidato_id,
+  const { persistido, ts } = await guardarPreguntas({
+    vacanteId: cv.vacante_id,
+    candidatoId: cv.candidato_id,
     tipo,
     preguntas: salida.preguntas,
   });
@@ -306,10 +359,11 @@ export async function generarPreguntasParaCandidato(candidatoVacanteId: string, 
       tipo_entrevista: tipo,
       num_preguntas: salida.preguntas.length,
       banderas: salida.preguntas.map((p) => p.bandera ?? null).filter(Boolean),
+      reemplazo_set_previo: previo !== null,
       persistido,
       evaluacion_ciega: { campos_ocultados: salida.ocultados },
     },
   });
 
-  return { salida, persistido };
+  return { salida, persistido, ts };
 }
