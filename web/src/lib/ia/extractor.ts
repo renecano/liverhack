@@ -2,10 +2,10 @@ import "server-only";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { anonimizar, type TextoAnonimizado } from "./anonimizar";
 import { MODELO_EXTRACCION, openai } from "./openai";
+import { crearVerificadorCitas, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
 import {
   ResultadoExtraccion,
   SalidaLLM,
-  type CumpleNoNegociable,
   type EstadoNoNegociable,
 } from "./schemas";
 
@@ -54,9 +54,7 @@ Reglas:
 - areas_oportunidad: brechas frente a la vacante y sus no negociables, o aspectos sin evidencia que el HM debería validar en entrevista (ej. "Sin evidencia de manejo de presupuesto: validar en entrevista"). Nunca la dejes vacía. Su cita es el requisito de la vacante (fuente "Vacante") o el pasaje del CV que muestra la brecha.
 - Si un dato no aparece, dilo ("Sin evidencia en CV") en lugar de inventarlo. Listas vacías están permitidas para idiomas y otros_estudios.
 - escolaridad: solo educación formal (licenciatura, ingeniería, posgrado). otros_estudios: diplomados, cursos, certificaciones.
-- Semáforo por cada no negociable (usa su id exacto, uno por cada id, sin omitir ninguno):
-  "cumple" = evidencia clara y suficiente; "parcial" = evidencia incompleta o de menor nivel; "no_cumple" = contradice el requisito o no hay ninguna evidencia.
-  Si es "no_cumple" por falta de evidencia, deja "fragmento" vacío.
+${REGLAS_SEMAFORO}
 - fit_score (0-100): ajuste global al perfil de la vacante por experiencia, estudios y competencias. NO consideres distancia, domicilio ni permanencia.
 - citas: al menos una por campo de la ficha que afirmes (descripcion, fortalezas, areas_oportunidad, estilo_liderazgo, vision_estrategica, analisis_toma_decisiones, idiomas, otros_estudios, escolaridad).
 - Escribe en español, tono profesional y neutral. No decides nada: el HM decide.`;
@@ -84,12 +82,6 @@ ${cv}
 ${ev}`;
 }
 
-// Normaliza para comparar fragmentos con el texto fuente (acentos, mayúsculas,
-// espacios y puntuación no deben invalidar una cita literal).
-const MARCAS = new RegExp("[\\u0300-\\u036f]", "g");
-const normalizar = (s: string) =>
-  s.normalize("NFD").replace(MARCAS, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-
 // Potencial Global de AssessFirst, si viene en la evaluación: es el % de
 // compatibilidad que usa el seed como fit_score (docs/07).
 export function potencialGlobal(evals: { tipo: string; resumen: string | null }[]): number | null {
@@ -116,46 +108,9 @@ function validar(
   e: EntradaExtractor,
   fuentes: Record<"CV" | "Evaluacion" | "Vacante", string>,
 ): { ok: true; resultado: ResultadoExtraccion; fitFuente: "assessfirst" | "llm" } | { ok: false; errores: string[] } {
-  const errores: string[] = [];
-  const norm = {
-    CV: normalizar(fuentes.CV),
-    Evaluacion: normalizar(fuentes.Evaluacion),
-    Vacante: normalizar(fuentes.Vacante),
-  };
-  const citaExiste = (fuente: keyof typeof norm, fragmento: string) => {
-    const f = normalizar(fragmento);
-    return f.length > 0 && norm[fuente].includes(f);
-  };
-
-  // Semáforo: exactamente un registro por cada no negociable de la vacante.
-  const esperados = new Set(e.noNegociables.map((n) => n.id));
-  const vistos = new Set<string>();
-  const semaforo: CumpleNoNegociable[] = [];
-  for (const r of crudo.cumple_no_negociables) {
-    if (!esperados.has(r.no_negociable_id)) {
-      errores.push(`no_negociable_id desconocido: ${r.no_negociable_id}`);
-      continue;
-    }
-    if (vistos.has(r.no_negociable_id)) {
-      errores.push(`no_negociable_id repetido: ${r.no_negociable_id}`);
-      continue;
-    }
-    vistos.add(r.no_negociable_id);
-    const sinEvidencia = r.estado === "no_cumple" && r.fragmento.trim() === "";
-    if (!sinEvidencia && !citaExiste(r.fuente, r.fragmento)) {
-      errores.push(`La cita del no negociable ${r.no_negociable_id} no aparece literal en ${r.fuente}: "${r.fragmento}"`);
-    }
-    semaforo.push({
-      no_negociable_id: r.no_negociable_id,
-      estado: r.estado,
-      evidencia: r.evidencia.trim() || "Sin evidencia",
-      cita: sinEvidencia ? `${r.fuente}: sin evidencia` : `${r.fuente}: «${r.fragmento.trim()}»`,
-    });
-  }
-  for (const id of esperados) if (!vistos.has(id)) errores.push(`Falta el no negociable ${id}`);
-  // Mismo orden que la vacante, para que el semáforo se lea igual en todas las filas.
-  const orden = e.noNegociables.map((n) => n.id);
-  semaforo.sort((a, b) => orden.indexOf(a.no_negociable_id) - orden.indexOf(b.no_negociable_id));
+  const citaExiste = crearVerificadorCitas(fuentes);
+  // Semáforo: exactamente un registro por cada no negociable, en el orden de la vacante.
+  const { semaforo, errores } = validarSemaforo(crudo.cumple_no_negociables, e.noNegociables, citaExiste);
 
   const citasInvalidas = crudo.citas.filter((c) => !citaExiste(c.fuente, c.fragmento));
   for (const c of citasInvalidas) {

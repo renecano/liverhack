@@ -16,6 +16,9 @@ export class SalidaInvalidaError extends Error {
   }
 }
 
+// Tokens acumulados de todos los intentos (para costo por corrida).
+export type UsoTokens = { entrada: number; salida: number };
+
 type Validacion<R> = { ok: true; valor: R } | { ok: false; errores: string[] };
 
 export async function generarValidado<S extends z.ZodType, R>(opts: {
@@ -26,7 +29,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
   nombreSchema: string;
   validar: (crudo: z.infer<S>) => Validacion<R> | Promise<Validacion<R>>;
   maxIntentos?: number;
-}): Promise<{ valor: R; modelo: string; intentos: number; erroresPrevios: string[] }> {
+}): Promise<{ valor: R; modelo: string; intentos: number; erroresPrevios: string[]; uso: UsoTokens }> {
   const max = opts.maxIntentos ?? 3;
   const mensajes: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: opts.sistema },
@@ -34,6 +37,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
   ];
   const erroresPrevios: string[] = [];
   let errores: string[] = [];
+  const uso: UsoTokens = { entrada: 0, salida: 0 };
 
   for (let intento = 1; intento <= max; intento++) {
     const r = await openai().chat.completions.create({
@@ -43,6 +47,8 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
       messages: mensajes,
       response_format: zodResponseFormat(opts.schema, opts.nombreSchema),
     });
+    uso.entrada += r.usage?.prompt_tokens ?? 0;
+    uso.salida += r.usage?.completion_tokens ?? 0;
     const msg = r.choices[0]?.message;
     const contenido = msg?.content ?? "";
 
@@ -62,7 +68,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
         : { ok: false, errores: crudo.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
     }
 
-    if (v.ok) return { valor: v.valor, modelo: r.model, intentos: intento, erroresPrevios };
+    if (v.ok) return { valor: v.valor, modelo: r.model, intentos: intento, erroresPrevios, uso };
 
     errores = v.errores;
     erroresPrevios.push(...errores.map((e) => `intento ${intento}: ${e}`));

@@ -5,10 +5,10 @@ import { openai } from "./openai";
 // calcula en código: no hay pgvector ni cambios en la BD.
 export const MODELO_EMBEDDINGS = "text-embedding-3-small";
 
-export async function embeber(textos: string[]): Promise<number[][]> {
-  if (textos.length === 0) return [];
+export async function embeber(textos: string[]): Promise<{ vectores: number[][]; tokens: number }> {
+  if (textos.length === 0) return { vectores: [], tokens: 0 };
   const r = await openai().embeddings.create({ model: MODELO_EMBEDDINGS, input: textos });
-  return r.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+  return { vectores: r.data.sort((a, b) => a.index - b.index).map((d) => d.embedding), tokens: r.usage?.total_tokens ?? 0 };
 }
 
 export function coseno(a: number[], b: number[]): number {

@@ -123,7 +123,7 @@ const familia = (competencia: string) => competencia.trim().toLowerCase().split(
 // Pares casi duplicados: misma familia de competencia + enunciado muy parecido,
 // o cualquier par casi idéntico. Índices base 1.
 async function casiDuplicados(ps: { pregunta: string; competencia: string }[]) {
-  const e = await embeber(ps.map((p) => p.pregunta));
+  const { vectores: e } = await embeber(ps.map((p) => p.pregunta));
   const pares: { i: number; j: number; sim: number }[] = [];
   for (let i = 0; i < ps.length; i++) {
     for (let j = i + 1; j < ps.length; j++) {

@@ -1,38 +1,46 @@
 import "server-only";
 import { anonimizar, type TextoAnonimizado } from "./anonimizar";
 import { coseno, embeber, MODELO_EMBEDDINGS } from "./embeddings";
-import { generarValidado } from "./llm";
+import { generarValidado, type UsoTokens } from "./llm";
 import { MODELO_EXTRACCION } from "./openai";
 import {
   CAMPOS_PERFIL_MOTIVO,
   SalidaMotivosLLM,
+  SalidaVerificacionLLM,
   Sugerencia,
   type CumpleNoNegociable,
   type Ficha,
 } from "./schemas";
+import { crearVerificadorCitas, normalizar, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
 import { registrarAudit, type Actor } from "./servicio";
 import { supabaseAdmin } from "./supabase-provisional";
 import { temasProhibidos } from "./temas-prohibidos";
 
 // Agente 6 de docs/04: sugeridor de vacantes para candidatos no seleccionados.
-// 1) Embeddings del perfil (ficha anonimizada) y de cada vacante abierta.
-// 2) Filtro duro: fuera las vacantes con algún no negociable sin NINGUNA evidencia.
-// 3) Ranking por similitud coseno (en código; sin pgvector ni cambios en la BD).
-// 4) El LLM solo redacta el motivo del top 3.
+// 1) Embeddings del perfil (ficha anonimizada) y de cada vacante abierta → ranking
+//    por similitud coseno (en código; sin pgvector ni cambios en la BD).
+// 2) Filtro estricto: para el top 5, el LLM evalúa cada no negociable con el mismo
+//    semáforo del extractor (cumple / parcial / no_cumple + cita literal del perfil).
+//    Se excluye toda vacante con algún no_cumple; los parciales se permiten.
+// 3) El LLM redacta el motivo del top 3 (los parciales aparecen como "validar …").
 // Solo sugiere: no mueve al candidato ni envía nada.
 
-export const VERSION_PROMPT_SUGERENCIAS = "sugerencias-v1";
+export const VERSION_PROMPT_SUGERENCIAS = "sugerencias-v2";
 const MAX_SUGERENCIAS = 3;
+const MAX_VERIFICAR = 5;
 
-// Heurísticas calibradas con el seed (text-embedding-3-small). La similitud por
-// no negociable mide el tema, no el cumplimiento; por eso solo descarta el caso
-// "claramente no cumple" (ninguna evidencia afín) y el ranking usa el perfil completo.
-const MIN_SIMILITUD_NN = 0.35; // debajo: el no negociable no tiene evidencia afín
-// debajo: la vacante no se sugiere (≈ score 40). Con 0.50 salían sugerencias que el
-// propio motivo desaconsejaba (p. ej. un arquitecto cloud → Diseñador UX/UI, score 29).
-const MIN_SIMILITUD_PERFIL = 0.55;
+// Heurísticas de ranking calibradas con el seed (text-embedding-3-small).
+// Con el filtro del LLM, el piso vuelve a 0.50: las vacantes débiles que antes
+// colaban (p. ej. arquitecto cloud → Diseñador UX/UI) ahora caen por no_cumple.
+const MIN_SIMILITUD_PERFIL = 0.5; // debajo: la vacante no se considera
 const SIM_SCORE_0 = 0.45; // similitud que mapea a score 0
 const SIM_SCORE_100 = 0.7; // similitud que mapea a score 100
+
+// Precios de lista supuestos (USD por millón de tokens) para estimar costo por
+// corrida en audit_log. Verificar contra la facturación real de OpenAI.
+const USD_POR_MILLON = { llm: { entrada: 2, salida: 8 }, embeddings: 0.02 };
+const costoLLM = (u: UsoTokens) => +((u.entrada * USD_POR_MILLON.llm.entrada + u.salida * USD_POR_MILLON.llm.salida) / 1e6).toFixed(6);
+const costoEmbeddings = (tokens: number) => +((tokens * USD_POR_MILLON.embeddings) / 1e6).toFixed(6);
 
 export const ESTATUS_NO_SELECCIONADO = ["descartado", "pool"] as const;
 
@@ -48,7 +56,7 @@ interface Vacante {
 
 type LineaPerfil = { campo: (typeof CAMPOS_PERFIL_MOTIVO)[number]; texto: string };
 
-// Perfil anonimizado en líneas etiquetadas por campo (para embeber y para citar).
+// Perfil anonimizado en líneas etiquetadas por campo (para embeber, verificar y citar).
 function perfilAnonimizado(nombre: string, escolaridad: string | null, ficha: Partial<Ficha>, cumple: CumpleNoNegociable[]) {
   const ocultados: TextoAnonimizado["ocultados"] = {};
   const lineas: LineaPerfil[] = [];
@@ -76,24 +84,69 @@ function perfilAnonimizado(nombre: string, escolaridad: string | null, ficha: Pa
 const textoVacante = (v: Vacante) =>
   [v.titulo, v.descripcion ?? "", ...v.no_negociables.map((n) => `No negociable: ${n.texto}`)].join("\n");
 
-const SISTEMA = `Eres el Sugeridor de vacantes de LivHire (El Puerto de Liverpool).
-Un candidato no fue seleccionado para su vacante. Ya se eligieron por similitud otras vacantes abiertas que encajan con su perfil.
+const bloqueVacante = (v: Vacante, conIds: boolean) =>
+  `### vacante_id: ${v.id}\n${v.titulo}\n${v.descripcion ?? ""}\nNo negociables:\n${v.no_negociables
+    .map((n) => (conIds ? `- id: ${n.id} | ${n.texto}` : `- ${n.texto}`))
+    .join("\n")}`;
+
+const SISTEMA_VERIFICACION = `Eres el verificador de no negociables del Sugeridor de vacantes de LivHire (El Puerto de Liverpool).
+Recibes el perfil anonimizado de UN candidato y varias vacantes. Para CADA vacante, evalúa cada uno de sus no negociables contra el perfil.
+
+Reglas:
+- Evaluación ciega: el perfil viene anonimizado. No infieras nombre, edad, género, origen ni domicilio, y no los uses para evaluar.
+- Una entrada por cada vacante recibida (su vacante_id exacto) y, dentro, una por cada no negociable de esa vacante.
+${REGLAS_SEMAFORO}
+- "fuente" siempre es "Perfil". En "fragmento" copia LITERALMENTE un pasaje corto del perfil (sin la etiqueta [campo]); no parafrasees.
+- Sé estricto: un requisito de estudios o certificación de otra disciplina es "no_cumple"; experiencia relacionada pero menor o indirecta es "parcial".
+- Tú no decides nada: solo evalúas evidencia.`;
+
+const SISTEMA_MOTIVOS = `Eres el Sugeridor de vacantes de LivHire (El Puerto de Liverpool).
+Un candidato no fue seleccionado para su vacante. Ya se eligieron otras vacantes abiertas que encajan con su perfil y cuyos no negociables no están en "no cumple".
 Tu única tarea es redactar el MOTIVO de cada sugerencia.
 
 Reglas:
-- Un motivo por cada vacante recibida (usa su id exacto), en español, 1 o 2 oraciones, máximo 45 palabras, tono profesional y cálido.
-- Explica qué del perfil encaja con la vacante. Si algún no negociable no está claramente demostrado, menciónalo como algo a validar.
+- Un motivo por cada vacante recibida (usa su vacante_id exacto), en español, 1 o 2 oraciones, máximo 45 palabras, tono profesional y cálido.
+- Explica qué del perfil encaja con la vacante.
+- Si la vacante trae no negociables en PARCIAL, el motivo debe incluir la palabra "validar" seguida de qué validar (ej. "validar la certificación cloud vigente").
 - "campo_ficha": el campo del perfil en que te basaste; debe ser uno de: ${CAMPOS_PERFIL_MOTIVO.join(", ")}.
 - Evaluación ciega: el perfil viene anonimizado. No menciones ni infieras nombre, edad, género, estado civil, familia, salud, origen ni domicilio.
 - No prometas contratación ni decidas nada: solo sugieres.`;
 
-function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante }[]) {
+function validarVerificacion(
+  crudo: SalidaVerificacionLLM,
+  aVerificar: { v: Vacante }[],
+  citaExiste: (fuente: "Perfil", fragmento: string) => boolean,
+) {
   const errores: string[] = [];
-  const ids = new Set(top.map((t) => t.v.id));
+  const porId = new Map(aVerificar.map(({ v }) => [v.id, v]));
+  const semaforos = new Map<string, CumpleNoNegociable[]>();
+  for (const x of crudo.vacantes) {
+    const v = porId.get(x.vacante_id);
+    if (!v) {
+      errores.push(`vacante_id desconocido: ${x.vacante_id}`);
+      continue;
+    }
+    if (semaforos.has(v.id)) {
+      errores.push(`vacante_id repetido: ${v.id}`);
+      continue;
+    }
+    const r = validarSemaforo(x.cumple_no_negociables, v.no_negociables, citaExiste);
+    errores.push(...r.errores.map((e) => `Vacante ${v.id}: ${e}`));
+    semaforos.set(v.id, r.semaforo);
+  }
+  for (const id of porId.keys()) if (!semaforos.has(id)) errores.push(`Falta la vacante ${id}`);
+  if (errores.length) return { ok: false as const, errores };
+  return { ok: true as const, valor: semaforos };
+}
+
+function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante; semaforo: CumpleNoNegociable[] }[]) {
+  const errores: string[] = [];
+  const porId = new Map(top.map((t) => [t.v.id, t]));
   const vistos = new Set<string>();
   const campos = new Set<string>(CAMPOS_PERFIL_MOTIVO);
   for (const m of crudo.motivos) {
-    if (!ids.has(m.vacante_id)) errores.push(`vacante_id desconocido: ${m.vacante_id}`);
+    const t = porId.get(m.vacante_id);
+    if (!t) errores.push(`vacante_id desconocido: ${m.vacante_id}`);
     else if (vistos.has(m.vacante_id)) errores.push(`vacante_id repetido: ${m.vacante_id}`);
     vistos.add(m.vacante_id);
     if (!campos.has(m.campo_ficha)) errores.push(`campo_ficha "${m.campo_ficha}" no es válido`);
@@ -103,10 +156,13 @@ function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante }[]) {
     if (palabras > 45 || oraciones > 2) {
       errores.push(`El motivo de ${m.vacante_id} debe tener 1-2 oraciones y máximo 45 palabras (tiene ${oraciones} y ${palabras})`);
     }
+    if (t && t.semaforo.some((s) => s.estado === "parcial") && !normalizar(m.motivo).includes("validar")) {
+      errores.push(`El motivo de ${m.vacante_id} debe decir "validar …" para sus no negociables en parcial`);
+    }
     const temas = temasProhibidos(m.motivo);
     if (temas.length) errores.push(`El motivo de ${m.vacante_id} toca un tema prohibido (${temas.join(", ")})`);
   }
-  for (const id of ids) if (!vistos.has(id)) errores.push(`Falta el motivo de la vacante ${id}`);
+  for (const id of porId.keys()) if (!vistos.has(id)) errores.push(`Falta el motivo de la vacante ${id}`);
   if (errores.length) return { ok: false as const, errores };
   return { ok: true as const, valor: crudo.motivos };
 }
@@ -205,6 +261,7 @@ export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
 }
 
 export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) {
+  const t0 = Date.now();
   const sb = supabaseAdmin();
   const cv = await sb
     .from("candidato_vacante")
@@ -235,12 +292,15 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
     ...(decididas.data ?? []).map((r) => r.vacante_id_sugerida as string),
   ]);
   const todas = (vacs.data ?? []) as Vacante[];
-  const filtros = { ya_participa_o_decidida: 0, sin_no_negociables: 0, no_negociable_sin_evidencia: 0, similitud_baja: 0 };
-  const candidatas = todas.filter((v) => {
-    if (excluidas.has(v.id)) return (filtros.ya_participa_o_decidida++, false);
-    if (!v.no_negociables.length) return (filtros.sin_no_negociables++, false);
-    return true;
-  });
+  const filtros = { ya_participa_o_decidida: 0, sin_no_negociables: 0, similitud_baja: 0, fuera_del_top: 0, no_cumple: 0 };
+  const candidatas = todas
+    .filter((v) => {
+      if (excluidas.has(v.id)) return (filtros.ya_participa_o_decidida++, false);
+      if (!v.no_negociables.length) return (filtros.sin_no_negociables++, false);
+      return true;
+    })
+    // Orden estable de los no negociables (el mismo que usa el semáforo del extractor).
+    .map((v) => ({ ...v, no_negociables: [...v.no_negociables].sort((a, b) => a.id.localeCompare(b.id)) }));
 
   const { lineas, ocultados } = perfilAnonimizado(
     candidato.nombre,
@@ -248,51 +308,68 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
     ficha,
     (cv.data.cumple_no_negociables ?? []) as CumpleNoNegociable[],
   );
+  const perfil = lineas.map((l) => `- [${l.campo}] ${l.texto}`).join("\n");
 
-  // Una sola llamada de embeddings: perfil completo + cada línea + cada vacante + cada no negociable.
-  const nnTextos = [...new Set(candidatas.flatMap((v) => v.no_negociables.map((n) => n.texto)))];
-  const entradas = [lineas.map((l) => l.texto).join("\n"), ...lineas.map((l) => l.texto), ...candidatas.map(textoVacante), ...nnTextos];
-  const e = await embeber(entradas);
-  const ePerfil = e[0];
-  const eLineas = e.slice(1, 1 + lineas.length);
-  const eVacs = e.slice(1 + lineas.length, 1 + lineas.length + candidatas.length);
-  const eNN = new Map(nnTextos.map((t, i) => [t, e[1 + lineas.length + candidatas.length + i]]));
-
+  // 1) Ranking por embeddings: una sola llamada (perfil + cada vacante).
+  const tEmb = Date.now();
+  const emb = await embeber([lineas.map((l) => l.texto).join("\n"), ...candidatas.map(textoVacante)]);
+  const msEmb = Date.now() - tEmb;
   const ranking = candidatas
-    .map((v, i) => {
-      const sim = coseno(ePerfil, eVacs[i]);
-      const nnSinEvidencia = v.no_negociables.filter(
-        (n) => Math.max(...eLineas.map((l) => coseno(l, eNN.get(n.texto)!))) < MIN_SIMILITUD_NN,
-      );
-      return { v, sim, nnSinEvidencia };
-    })
-    .filter((r) => {
-      if (r.nnSinEvidencia.length) return (filtros.no_negociable_sin_evidencia++, false);
-      if (r.sim < MIN_SIMILITUD_PERFIL) return (filtros.similitud_baja++, false);
-      return true;
-    })
-    .sort((a, b) => b.sim - a.sim)
-    .slice(0, MAX_SUGERENCIAS);
+    .map((v, i) => ({ v, sim: coseno(emb.vectores[0], emb.vectores[i + 1]) }))
+    .filter((r) => (r.sim < MIN_SIMILITUD_PERFIL ? (filtros.similitud_baja++, false) : true))
+    .sort((a, b) => b.sim - a.sim);
+  const aVerificar = ranking.slice(0, MAX_VERIFICAR);
+  filtros.fuera_del_top = ranking.length - aVerificar.length;
 
+  // 2) Filtro estricto: semáforo por vacante con el LLM (misma lógica que el extractor).
+  let verificacion: { semaforos: Map<string, CumpleNoNegociable[]>; modelo: string; intentos: number; erroresPrevios: string[]; uso: UsoTokens } | null = null;
+  const tVer = Date.now();
+  if (aVerificar.length) {
+    const citaExiste = crearVerificadorCitas({ Perfil: perfil });
+    const r = await generarValidado({
+      modelo: MODELO_EXTRACCION,
+      sistema: SISTEMA_VERIFICACION,
+      usuario: `PERFIL DEL CANDIDATO (anonimizado; fuente "Perfil"):\n${perfil}\n\nVACANTES:\n${aVerificar.map(({ v }) => bloqueVacante(v, true)).join("\n\n")}`,
+      schema: SalidaVerificacionLLM,
+      nombreSchema: "verificacion_no_negociables",
+      validar: (crudo) => validarVerificacion(crudo, aVerificar, citaExiste),
+    });
+    verificacion = { semaforos: r.valor, modelo: r.modelo, intentos: r.intentos, erroresPrevios: r.erroresPrevios, uso: r.uso };
+  }
+  const msVer = Date.now() - tVer;
+
+  const verificadas = aVerificar.map(({ v, sim }) => {
+    const semaforo = verificacion?.semaforos.get(v.id) ?? [];
+    return { v, sim, semaforo, excluida: semaforo.some((s) => s.estado === "no_cumple") };
+  });
+  filtros.no_cumple = verificadas.filter((x) => x.excluida).length;
+  const top = verificadas.filter((x) => !x.excluida).slice(0, MAX_SUGERENCIAS);
+
+  // 3) Motivos (solo el top 3); los parciales se mencionan como "validar …".
   let sugerencias: Sugerencia[] = [];
-  let llm: { modelo: string; intentos: number; erroresPrevios: string[] } | null = null;
-  if (ranking.length) {
-    const perfil = lineas.map((l) => `- [${l.campo}] ${l.texto}`).join("\n");
-    const vacantes = ranking
-      .map((r) => `### id: ${r.v.id}\n${r.v.titulo}\n${r.v.descripcion ?? ""}\nNo negociables:\n${r.v.no_negociables.map((n) => `- ${n.texto}`).join("\n")}`)
+  let motivosLLM: { modelo: string; intentos: number; erroresPrevios: string[]; uso: UsoTokens } | null = null;
+  const tMot = Date.now();
+  if (top.length) {
+    const vacantes = top
+      .map(({ v, semaforo }) => {
+        const parciales = v.no_negociables.filter((n) => semaforo.find((s) => s.no_negociable_id === n.id)?.estado === "parcial");
+        return `${bloqueVacante(v, false)}\nNo negociables en PARCIAL (menciónalos como "validar …"): ${
+          parciales.length ? parciales.map((n) => n.texto).join("; ") : "ninguno"
+        }`;
+      })
       .join("\n\n");
     const r = await generarValidado({
       modelo: MODELO_EXTRACCION,
-      sistema: SISTEMA,
+      sistema: SISTEMA_MOTIVOS,
       usuario: `PERFIL DEL CANDIDATO (anonimizado, por campo):\n${perfil}\n\nVACANTES SUGERIDAS:\n${vacantes}`,
       schema: SalidaMotivosLLM,
       nombreSchema: "motivos_sugerencias",
-      validar: (crudo) => validarMotivos(crudo, ranking),
+      validar: (crudo) => validarMotivos(crudo, top),
     });
-    llm = { modelo: r.modelo, intentos: r.intentos, erroresPrevios: r.erroresPrevios };
+    motivosLLM = { modelo: r.modelo, intentos: r.intentos, erroresPrevios: r.erroresPrevios, uso: r.uso };
     const motivos = new Map(r.valor.map((m) => [m.vacante_id, m]));
     sugerencias = Sugerencia.array().parse(
-      ranking.map(({ v, sim }) => ({
+      top.map(({ v, sim }) => ({
         vacante_id_sugerida: v.id,
         vacante_titulo: v.titulo,
         score: score(sim),
@@ -302,9 +379,32 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
       })),
     );
   }
+  const msMot = Date.now() - tMot;
 
   const guardado = await guardarSugerencias({ candidatoId, sugerencias });
   const { persistido } = guardado;
+
+  const tokens = {
+    embeddings: emb.tokens,
+    verificacion: verificacion?.uso ?? { entrada: 0, salida: 0 },
+    motivos: motivosLLM?.uso ?? { entrada: 0, salida: 0 },
+  };
+  const costo = {
+    embeddings: costoEmbeddings(tokens.embeddings),
+    verificacion: costoLLM(tokens.verificacion),
+    motivos: costoLLM(tokens.motivos),
+  };
+  const medicion = {
+    tiempos_ms: { embeddings: msEmb, verificacion: msVer, motivos: msMot, total: Date.now() - t0 },
+    tokens,
+    costo_usd_estimado: { ...costo, total: +(costo.embeddings + costo.verificacion + costo.motivos).toFixed(6) },
+  };
+  const resumenVerificadas = verificadas.map((x) => ({
+    vacante_id: x.v.id,
+    score: score(x.sim),
+    semaforo: x.semaforo.map((s) => s.estado),
+    excluida: x.excluida,
+  }));
 
   await registrarAudit({
     actor,
@@ -314,20 +414,22 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
     detalle: {
       agente: "sugeridor_vacantes",
       prompt: VERSION_PROMPT_SUGERENCIAS,
-      modelo: llm?.modelo ?? null,
+      modelo: motivosLLM?.modelo ?? verificacion?.modelo ?? null,
       modelo_embeddings: MODELO_EMBEDDINGS,
-      intentos: llm?.intentos ?? 0,
-      errores_intentos_previos: llm?.erroresPrevios ?? [],
+      intentos: { verificacion: verificacion?.intentos ?? 0, motivos: motivosLLM?.intentos ?? 0 },
+      errores_intentos_previos: [...(verificacion?.erroresPrevios ?? []), ...(motivosLLM?.erroresPrevios ?? [])],
       temperature: 0,
       vacantes_abiertas: todas.length,
       vacantes_consideradas: candidatas.length,
       vacantes_filtradas: filtros,
+      verificadas: resumenVerificadas,
       sugerencias: sugerencias.map((s) => ({ vacante_id: s.vacante_id_sugerida, score: s.score })),
       persistido,
       filas: { insertadas: guardado.insertadas, actualizadas: guardado.actualizadas, borradas: guardado.borradas },
+      ...medicion,
       evaluacion_ciega: { campos_ocultados: ocultados },
     },
   });
 
-  return { sugerencias, persistido, consideradas: candidatas.length, filtros };
+  return { sugerencias, persistido, consideradas: candidatas.length, filtros, verificadas: resumenVerificadas, ...medicion };
 }

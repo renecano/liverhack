@@ -177,3 +177,23 @@ export const SalidaMotivosLLM = z.object({
   ),
 });
 export type SalidaMotivosLLM = z.infer<typeof SalidaMotivosLLM>;
+
+// Verificación de no negociables de las vacantes candidatas (filtro del agente 6).
+// Mismo semáforo que el extractor; la única fuente citable es el perfil anonimizado.
+export const SalidaVerificacionLLM = z.object({
+  vacantes: z.array(
+    z.object({
+      vacante_id: z.string(),
+      cumple_no_negociables: z.array(
+        z.object({
+          no_negociable_id: z.string(),
+          estado: EstadoNoNegociable,
+          evidencia: z.string(),
+          fuente: z.enum(["Perfil"]),
+          fragmento: z.string(),
+        }),
+      ),
+    }),
+  ),
+});
+export type SalidaVerificacionLLM = z.infer<typeof SalidaVerificacionLLM>;
