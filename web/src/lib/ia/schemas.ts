@@ -82,3 +82,55 @@ export const ResultadoExtraccion = z.object({
   escolaridad: z.string().nullable(),
 });
 export type ResultadoExtraccion = z.infer<typeof ResultadoExtraccion>;
+
+// ---------------------------------------------------------------------------
+// Agente 3: preguntas de entrevista (docs/04 §3).
+// preguntas_entrevista.preguntas = [{pregunta, objetivo, competencia, bandera?, origen}]
+// `origen` es una extensión trazable: qué campo de la ficha o qué no negociable
+// motivó la pregunta.
+// ---------------------------------------------------------------------------
+export const TipoEntrevista = z.enum(["competencias", "panel"]); // enum tipo_entrevista de la BD
+export type TipoEntrevista = z.infer<typeof TipoEntrevista>;
+
+export const CAMPOS_FICHA_ORIGEN = [
+  "descripcion",
+  "fortalezas",
+  "areas_oportunidad",
+  "estilo_liderazgo",
+  "vision_estrategica",
+  "analisis_toma_decisiones",
+  "idiomas",
+  "otros_estudios",
+  "recomendaciones",
+] as const;
+
+export const Bandera = z.enum(["no_negociable_parcial", "no_negociable_no_cumple", "hueco_cv", "area_oportunidad"]);
+
+export const OrigenPregunta = z.object({
+  tipo: z.enum(["no_negociable", "ficha"]),
+  // no_negociable → su id; ficha → nombre del campo (CAMPOS_FICHA_ORIGEN)
+  referencia: z.string(),
+});
+
+export const Pregunta = z.object({
+  pregunta: z.string().min(1),
+  objetivo: z.string().min(1),
+  competencia: z.string().min(1),
+  bandera: Bandera.optional(),
+  origen: OrigenPregunta,
+});
+export type Pregunta = z.infer<typeof Pregunta>;
+
+// Salida cruda del LLM: sin opcionales (structured outputs strict); bandera nullable.
+export const SalidaPreguntasLLM = z.object({
+  preguntas: z.array(
+    z.object({
+      pregunta: z.string(),
+      objetivo: z.string(),
+      competencia: z.string(),
+      bandera: Bandera.nullable(),
+      origen: OrigenPregunta,
+    }),
+  ),
+});
+export type SalidaPreguntasLLM = z.infer<typeof SalidaPreguntasLLM>;

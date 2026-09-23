@@ -5,9 +5,9 @@ import { Fragment, useState } from "react";
 import type { FilaCandidato } from "@/lib/ia/consultas";
 import { mxn } from "@/lib/ia/formato";
 import { BadgeReferido } from "./BadgeReferido";
+import { PanelPreguntas } from "./PanelPreguntas";
 import { Semaforo, SemaforoDetalle } from "./Semaforo";
 import { VisorCv } from "./VisorCv";
-
 
 const ESTATUS: Record<string, string> = {
   activo: "text-[var(--lh-ink-2)]",
@@ -33,13 +33,21 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
   const [sel, setSel] = useState<string[]>([]);
   const [abierto, setAbierto] = useState<string | null>(null);
   const [cv, setCv] = useState<FilaCandidato | null>(null);
+  // Panel de preguntas: se queda montado tras abrirse para no perder lo generado
+  // (aún no se persiste en preguntas_entrevista).
+  const [preguntasDe, setPreguntasDe] = useState<string | null>(null);
+  const [panelesMontados, setPanelesMontados] = useState<string[]>([]);
+  const alternarPreguntas = (id: string) => {
+    setPreguntasDe((x) => (x === id ? null : id));
+    setPanelesMontados((xs) => (xs.includes(id) ? xs : [...xs, id]));
+  };
 
   const alternar = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   return (
     <>
       <div className="overflow-x-auto rounded-md border border-[var(--lh-rule)] bg-[var(--lh-card)]">
-        <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1200px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--lh-rule)] whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">
               <th className="w-10 px-4 py-3" />
@@ -51,6 +59,7 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
               <th className="px-3 py-3 font-medium">No negociables</th>
               <th className="px-3 py-3 font-medium">Estatus</th>
               <th className="px-3 py-3 font-medium">CV</th>
+              <th className="px-3 py-3 font-medium">Entrevista</th>
             </tr>
           </thead>
           <tbody>
@@ -111,15 +120,36 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
                         Ver PDF
                       </button>
                     </td>
+                    <td className="px-3 py-3">
+                      <button
+                        onClick={() => alternarPreguntas(f.id)}
+                        aria-expanded={preguntasDe === f.id}
+                        className={`whitespace-nowrap rounded border px-2.5 py-1 text-xs ${
+                          preguntasDe === f.id
+                            ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
+                            : "border-[var(--lh-rule)] hover:border-[var(--lh-ink)]"
+                        }`}
+                      >
+                        Preguntas
+                      </button>
+                    </td>
                   </tr>
                   {abierto === f.id && (
                     <tr className="border-b border-[var(--lh-rule)] bg-stone-50/70">
                       <td />
-                      <td colSpan={8} className="px-3 py-4">
+                      <td colSpan={9} className="px-3 py-4">
                         <p className="mb-2 text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">
                           No negociables de {f.vacante_titulo} · evidencia y cita
                         </p>
                         <SemaforoDetalle items={f.no_negociables} />
+                      </td>
+                    </tr>
+                  )}
+                  {panelesMontados.includes(f.id) && (
+                    <tr className="border-b border-[var(--lh-rule)] bg-[#fbf7f1]" hidden={preguntasDe !== f.id}>
+                      <td />
+                      <td colSpan={9} className="px-3 py-4">
+                        <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} />
                       </td>
                     </tr>
                   )}
