@@ -1,5 +1,5 @@
-// Escrituras transversales del orquestador y del sla-engine: audit_log (append-only),
-// notificaciones en borrador (cero ghosting) y lectura del estado vigente.
+// Escrituras transversales del orquestador y del sla-engine: audit_log (append-only)
+// y notificaciones en borrador (cero ghosting).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -9,9 +9,7 @@ import type {
   Notificacion,
   RolUsuario,
   TipoNotificacion,
-  Vacante,
 } from "@/lib/supabase/types";
-import { ESTADOS, estadoDerivado, type EstadoProceso } from "./estados";
 
 /** Quién ejecuta la acción. id/rol null = el sistema (jobs, sla-engine). */
 export interface Actor {
@@ -98,39 +96,4 @@ export async function crearNotificaciones(
     });
   }
   return creadas;
-}
-
-/** Estado vigente del orquestador por vacante: último `cambio_estado` en audit_log. */
-export async function leerEstados(
-  db: SupabaseClient,
-  vacantes: Pick<Vacante, "id" | "etapa_actual" | "estatus">[],
-): Promise<Map<string, EstadoProceso>> {
-  const estados = new Map<string, EstadoProceso>();
-  if (vacantes.length === 0) return estados;
-
-  const eventos = revisar<Pick<AuditLog, "entidad_id" | "detalle">[]>(
-    await db
-      .from("audit_log")
-      .select("entidad_id, detalle, ts")
-      .eq("entidad", "vacantes")
-      .eq("accion", ACCION_CAMBIO_ESTADO)
-      .in("entidad_id", vacantes.map((v) => v.id))
-      .order("ts", { ascending: false }),
-    "leer estados",
-  );
-  for (const e of eventos) {
-    const estado = e.detalle?.estado_nuevo as EstadoProceso | undefined;
-    if (e.entidad_id && estado && ESTADOS.includes(estado) && !estados.has(e.entidad_id)) {
-      estados.set(e.entidad_id, estado);
-    }
-  }
-  for (const v of vacantes) {
-    // Sin eventos se deriva; y la columna manda si alguien cerró/canceló la vacante
-    // por fuera del orquestador.
-    const cerrada = v.estatus === "cancelada" || v.estatus === "cubierta";
-    if (cerrada || !estados.has(v.id)) {
-      estados.set(v.id, estadoDerivado(v.etapa_actual, v.estatus));
-    }
-  }
-  return estados;
 }

@@ -12,6 +12,20 @@ export type EtapaProceso =
   | "seleccion"
   | "oferta";
 export type EstatusVacante = "abierta" | "en_proceso" | "cubierta" | "cancelada";
+/** Enum estado_proceso (migración 20260923204457): sub-paso del orquestador. */
+export type EstadoProceso =
+  | "REQUISICION_EN_CURSO"
+  | "ESPERANDO_HM_VALIDA_NNN"
+  | "ALINEACION_EN_CURSO"
+  | "ESPERANDO_HM_SELECCIONA_PERFILES"
+  | "BUSQUEDA_EN_CURSO"
+  | "ATRACCION_EN_CURSO"
+  | "ESPERANDO_HM_DEFINE_POOL"
+  | "SELECCION_EN_CURSO"
+  | "ESPERANDO_HM_DECIDE_FINALISTA"
+  | "OFERTA_EN_CURSO"
+  | "CUBIERTA"
+  | "CANCELADA";
 export type EstatusCandidatoVacante =
   | "activo"
   | "finalista"
@@ -65,6 +79,8 @@ export interface Vacante {
   at_id: string | null;
   estatus: EstatusVacante;
   etapa_actual: EtapaProceso;
+  /** Fuente de verdad del estado del orquestador (coherente con etapa_actual por CHECK). */
+  estado_proceso: EstadoProceso;
   fecha_apertura: string;
   fecha_estimada_cobertura: string | null;
   alineacion_ok: boolean | null;

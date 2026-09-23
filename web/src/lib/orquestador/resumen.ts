@@ -23,7 +23,7 @@ import {
   type SemaforoEtapa,
 } from "@/lib/sla/motor";
 import { ETAPAS, INFO_ESTADO, esEsperaHM, type EstadoProceso } from "./estados";
-import { leerEstados, revisar } from "./persistencia";
+import { revisar } from "./persistencia";
 
 export interface ResumenEtapa {
   etapa: EtapaProceso;
@@ -72,11 +72,10 @@ export async function resumenVacantes(
   const vacantes = revisar<Vacante[]>(await q, "vacantes");
   if (vacantes.length === 0) return [];
 
-  const [etapasRes, slaRes, usuariosRes, estados] = await Promise.all([
+  const [etapasRes, slaRes, usuariosRes] = await Promise.all([
     db.from("vacante_etapas").select("*").in("vacante_id", vacantes.map((v) => v.id)),
     db.from("sla_config").select("*"),
     db.from("usuarios").select("id, nombre, rol"),
-    leerEstados(db, vacantes),
   ]);
   const etapas = revisar<VacanteEtapa[]>(etapasRes, "vacante_etapas");
   const sla = revisar<SlaConfig[]>(slaRes, "sla_config");
@@ -84,7 +83,7 @@ export async function resumenVacantes(
   const nombre = (id: string | null) => usuarios.find((u) => u.id === id)?.nombre ?? null;
 
   return vacantes.map((v) => {
-    const estado = estados.get(v.id)!;
+    const estado = v.estado_proceso;
     const propias = etapas
       .filter((e) => e.vacante_id === v.id)
       .sort((a, b) => ETAPAS.indexOf(a.etapa) - ETAPAS.indexOf(b.etapa));

@@ -7,13 +7,13 @@
 //    (docs/00: "HM valida no negociables", "HM selecciona perfiles", "HM define candidatos
 //    que pasan", "HM elige finalista"). Una compuerta NUNCA se cruza con avanzarEtapa.
 //
-// docs/02 no tiene columna para el ESTADO: se persiste como evento `cambio_estado` en
-// audit_log (append-only) y el estado vigente es el último evento. Sin eventos (vacantes
-// del seed), se deriva de etapa_actual + estatus con estadoDerivado().
+// El ESTADO vive en vacantes.estado_proceso (enum estado_proceso, migración
+// 20260923204457), con un CHECK que lo mantiene coherente con etapa_actual/estatus.
+// audit_log registra cada `cambio_estado`, pero no es la fuente de verdad.
 
 import type {
+  EstadoProceso,
   EstatusCandidatoVacante,
-  EstatusVacante,
   EtapaProceso,
   RolUsuario,
   TipoDecision,
@@ -51,9 +51,9 @@ export const ESTADOS = [
   "OFERTA_EN_CURSO",
   "CUBIERTA",
   "CANCELADA",
-] as const;
+] as const satisfies readonly EstadoProceso[];
 
-export type EstadoProceso = (typeof ESTADOS)[number];
+export type { EstadoProceso };
 
 export interface InfoEstado {
   etapa: EtapaProceso;
@@ -180,22 +180,6 @@ export function esEsperaHM(estado: EstadoProceso): boolean {
   return INFO_ESTADO[estado].esperaHM;
 }
 
-/** Estado de arranque de una etapa (el tramo de trabajo, antes de cualquier compuerta). */
-export const ESTADO_INICIAL_ETAPA: Record<EtapaProceso, EstadoProceso> = {
-  requisicion: "REQUISICION_EN_CURSO",
-  alineacion: "ALINEACION_EN_CURSO",
-  busqueda: "BUSQUEDA_EN_CURSO",
-  atraccion: "ATRACCION_EN_CURSO",
-  seleccion: "SELECCION_EN_CURSO",
-  oferta: "OFERTA_EN_CURSO",
-};
-
-/** Para vacantes sin eventos `cambio_estado` en audit_log (p. ej. las del seed). */
-export function estadoDerivado(etapa: EtapaProceso, estatus: EstatusVacante): EstadoProceso {
-  if (estatus === "cancelada") return "CANCELADA";
-  if (estatus === "cubierta") return "CUBIERTA";
-  return ESTADO_INICIAL_ETAPA[etapa];
-}
 
 // ---------------------------------------------------------------------------
 // Efecto de cada decisión del HM sobre un candidato (docs/02 tipo_decision).

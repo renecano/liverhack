@@ -216,7 +216,10 @@ async function main() {
   await registrarAudit(db, { id: null, rol: null }, "cancelar_vacante_verify", "vacantes", vacante.id, {
     motivo: "limpieza de scripts/verify-proceso.ts",
   });
-  revisar(await db.from("vacantes").update({ estatus: "cancelada" }).eq("id", vacante.id), "cancelar");
+  revisar(
+    await db.from("vacantes").update({ estatus: "cancelada", estado_proceso: "CANCELADA" }).eq("id", vacante.id),
+    "cancelar",
+  );
   revisar(await db.from("notificaciones").delete().eq("vacante_id", vacante.id).eq("estatus", "borrador"), "borradores");
   revisar(await db.from("candidato_vacante").delete().eq("vacante_id", vacante.id), "candidato_vacante");
   console.log(

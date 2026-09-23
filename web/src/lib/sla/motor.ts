@@ -24,7 +24,6 @@ import {
 import {
   ACTOR_SISTEMA,
   crearNotificaciones,
-  leerEstados,
   registrarAudit,
   revisar,
   type NuevaNotificacion,
@@ -36,7 +35,15 @@ export const UMBRAL_EN_RIESGO = 1;
 
 export type VacanteSla = Pick<
   Vacante,
-  "id" | "nivel" | "etapa_actual" | "estatus" | "fecha_apertura" | "hm_id" | "hrbp_id" | "at_id"
+  | "id"
+  | "nivel"
+  | "etapa_actual"
+  | "estado_proceso"
+  | "estatus"
+  | "fecha_apertura"
+  | "hm_id"
+  | "hrbp_id"
+  | "at_id"
 >;
 
 export async function leerSlaConfig(
@@ -283,16 +290,15 @@ export async function detectarAtrasos(
   const vacantes = revisar<(VacanteSla & Pick<Vacante, "titulo">)[]>(
     await db
       .from("vacantes")
-      .select("id, titulo, nivel, etapa_actual, estatus, fecha_apertura, hm_id, hrbp_id, at_id")
+      .select("id, titulo, nivel, etapa_actual, estado_proceso, estatus, fecha_apertura, hm_id, hrbp_id, at_id")
       .in("estatus", ["abierta", "en_proceso"]),
     "vacantes",
   );
   if (vacantes.length === 0) return [];
 
-  const [etapasRes, usuariosRes, estados] = await Promise.all([
+  const [etapasRes, usuariosRes] = await Promise.all([
     db.from("vacante_etapas").select("*").in("vacante_id", vacantes.map((v) => v.id)),
     db.from("usuarios").select("id, nombre, rol"),
-    leerEstados(db, vacantes),
   ]);
   const etapas = revisar<VacanteEtapa[]>(etapasRes, "vacante_etapas");
   const usuarios = revisar<Pick<Usuario, "id" | "nombre" | "rol">[]>(usuariosRes, "usuarios");
@@ -312,8 +318,7 @@ export async function detectarAtrasos(
     }
     if (estatus !== "en_riesgo" && estatus !== "atrasada") continue;
 
-    const estado = estados.get(v.id)!;
-    const b = quienBloquea(v, estado, actual);
+    const b = quienBloquea(v, v.estado_proceso, actual);
     const bloquea = { ...b, nombre: nombre(b.id) };
     const restantes = diasRestantes(actual, hoy)!;
     const etapaTxt = NOMBRE_ETAPA[v.etapa_actual];

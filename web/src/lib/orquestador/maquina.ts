@@ -9,6 +9,7 @@
 //
 // Nota: PostgREST no da transacciones multi-tabla; se valida todo antes de la primera
 // escritura y la decisión (fuente de verdad) se escribe primero.
+// El estado vive en vacantes.estado_proceso; audit_log registra cada cambio.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,7 +37,6 @@ import {
 import {
   ACCION_CAMBIO_ESTADO,
   crearNotificaciones,
-  leerEstados,
   registrarAudit,
   revisar,
   type Actor,
@@ -94,8 +94,7 @@ async function cargarVacante(db: SupabaseClient, vacanteId: string): Promise<Vac
 
 export async function obtenerEstado(vacanteId: string, ctx: Contexto = {}): Promise<EstadoProceso> {
   const db = ctx.db ?? createAdminClient();
-  const v = await cargarVacante(db, vacanteId);
-  return (await leerEstados(db, [v])).get(v.id)!;
+  return (await cargarVacante(db, vacanteId)).estado_proceso;
 }
 
 function exigirJustificacion(justificacion: string | null | undefined): string {
@@ -149,23 +148,36 @@ async function cambiarEstado(
 ): Promise<ResultadoCambio> {
   const etapaAnterior = vacante.etapa_actual;
   const etapaNueva = hacia === "CANCELADA" ? etapaAnterior : INFO_ESTADO[hacia].etapa;
+  const estatus: EstatusVacante =
+    hacia === "CUBIERTA" ? "cubierta"
+    : hacia === "CANCELADA" ? "cancelada"
+    : etapaNueva === "requisicion" ? vacante.estatus
+    : "en_proceso";
+
+  // Estado, etapa y estatus en un solo UPDATE (el CHECK de la BD exige coherencia).
+  // La guarda `estado_proceso = desde` evita que dos llamadas concurrentes avancen dos veces.
+  const filas = revisar<{ id: string }[]>(
+    await db
+      .from("vacantes")
+      .update({ estado_proceso: hacia, etapa_actual: etapaNueva, estatus })
+      .eq("id", vacante.id)
+      .eq("estado_proceso", desde)
+      .select("id"),
+    "actualizar vacante",
+  );
+  if (filas.length === 0) {
+    throw new ErrorProceso(
+      "TRANSICION_INVALIDA",
+      `la vacante ya no está en ${desde} (otro usuario la movió); recarga e intenta de nuevo`,
+    );
+  }
+  const actualizada: Vacante = { ...vacante, estado_proceso: hacia, etapa_actual: etapaNueva, estatus };
 
   if (hacia === "CUBIERTA") {
     await replanificarDesde(vacante, null, db, hoy);
   } else if (etapaNueva !== etapaAnterior) {
     await replanificarDesde(vacante, etapaNueva, db, hoy);
   }
-
-  const estatus: EstatusVacante =
-    hacia === "CUBIERTA" ? "cubierta"
-    : hacia === "CANCELADA" ? "cancelada"
-    : etapaNueva === "requisicion" ? vacante.estatus
-    : "en_proceso";
-  revisar(
-    await db.from("vacantes").update({ etapa_actual: etapaNueva, estatus }).eq("id", vacante.id),
-    "actualizar vacante",
-  );
-  const actualizada: Vacante = { ...vacante, etapa_actual: etapaNueva, estatus };
 
   const candidatos = revisar<CandidatoEnVacante[]>(
     await db
@@ -288,6 +300,7 @@ export async function abrirVacante(
       fuente_referidos: input.fuente_referidos ?? false,
       estatus: "abierta",
       etapa_actual: "requisicion",
+      estado_proceso: "REQUISICION_EN_CURSO",
       fecha_apertura: input.fecha_apertura ?? hoy,
     })
     .select()
@@ -342,7 +355,7 @@ export async function avanzarEtapa(vacanteId: string, ctx: Contexto = {}): Promi
   const hoy = ctx.hoy ?? hoyISO();
 
   const vacante = await cargarVacante(db, vacanteId);
-  const estado = (await leerEstados(db, [vacante])).get(vacante.id)!;
+  const estado = vacante.estado_proceso;
   const t = transicionDesde(estado, "avanzar");
 
   if (!t) {
@@ -404,7 +417,7 @@ export async function confirmarPasoHM(
   if (vacante.hm_id !== hmId) {
     throw new ErrorProceso("NO_AUTORIZADO", "solo el HM de la vacante resuelve sus compuertas");
   }
-  const estado = (await leerEstados(db, [vacante])).get(vacante.id)!;
+  const estado = vacante.estado_proceso;
   const t = transicionDesde(estado, "confirmacion_hm");
   if (!t) {
     throw new ErrorProceso(
@@ -457,7 +470,7 @@ export async function registrarDecision(
   if (vacante.hm_id !== hmId) {
     throw new ErrorProceso("NO_AUTORIZADO", "solo el HM de la vacante toma decisiones sobre sus candidatos");
   }
-  const estado = (await leerEstados(db, [vacante])).get(vacante.id)!;
+  const estado = vacante.estado_proceso;
   if (INFO_ESTADO[estado].terminal) {
     throw new ErrorProceso("TRANSICION_INVALIDA", `la vacante está ${estado}`);
   }

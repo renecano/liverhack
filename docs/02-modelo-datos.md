@@ -22,10 +22,15 @@ vacantes(
   hm_id -> usuarios, hrbp_id -> usuarios, at_id -> usuarios,
   estatus[abierta|en_proceso|cubierta|cancelada],
   etapa_actual[requisicion|alineacion|busqueda|atraccion|seleccion|oferta],
+  estado_proceso[REQUISICION_EN_CURSO|ESPERANDO_HM_VALIDA_NNN|ALINEACION_EN_CURSO|
+                 ESPERANDO_HM_SELECCIONA_PERFILES|BUSQUEDA_EN_CURSO|ATRACCION_EN_CURSO|
+                 ESPERANDO_HM_DEFINE_POOL|SELECCION_EN_CURSO|ESPERANDO_HM_DECIDE_FINALISTA|
+                 OFERTA_EN_CURSO|CUBIERTA|CANCELADA],   -- sub-paso del orquestador; lo escribe SOLO el orquestador
   fecha_apertura, fecha_estimada_cobertura,
   alineacion_ok bool, alineacion_notas text,   -- del agente de alineación
   fuente_referidos bool
 )
+`estado_proceso` (migración `20260923204457`) es la fuente de verdad del estado del orquestador. Un CHECK lo mantiene coherente con `etapa_actual` y `estatus` (p. ej. `ESPERANDO_HM_DEFINE_POOL` ⇒ `atraccion`; `CANCELADA` ⇔ `estatus = cancelada`). Si un insert no lo trae, un trigger pone el `*_EN_CURSO` de su `etapa_actual`.
 no_negociables(id, vacante_id -> vacantes, texto, tipo[estudios|habilidad_tecnica|competencia])
 ```
 
