@@ -10,12 +10,16 @@ export const BUCKET_CV = "cv";
 
 export type Actor = { id: string | null; rol: "hm" | "at" | "hrbp" | "entrevistador" | "admin" | null };
 
+// prueba: la corrida viene de un script de test/dev (ver lib/ia/prueba.ts).
+export type OpcionesAudit = { prueba?: boolean };
+
 export async function registrarAudit(params: {
   actor: Actor;
   accion: string;
   entidad: string;
   entidad_id: string | null;
   detalle: Record<string, unknown>;
+  prueba?: boolean;
 }) {
   const { error } = await supabaseAdmin()
     .from("audit_log")
@@ -25,7 +29,7 @@ export async function registrarAudit(params: {
       accion: params.accion,
       entidad: params.entidad,
       entidad_id: params.entidad_id,
-      detalle: params.detalle,
+      detalle: params.prueba ? { ...params.detalle, prueba: true } : params.detalle,
     });
   if (error) throw new Error(`audit_log: ${error.message}`);
 }
@@ -105,6 +109,7 @@ export interface EntradaCarga {
   cvTexto?: string | null;
   evaluacion?: { tipo: "assessfirst" | "psicometrica" | "otra"; resumen: string } | null;
   actor: Actor;
+  prueba?: boolean;
 }
 
 export async function procesarCarga(entrada: EntradaCarga) {
@@ -172,6 +177,7 @@ export async function procesarCarga(entrada: EntradaCarga) {
       accion: "cargar_candidato",
       entidad: "candidatos",
       entidad_id: candidatoId,
+      prueba: entrada.prueba,
       detalle: { vacante_id: entrada.vacanteId, fuente: entrada.candidato.fuente, cv_url: cvUrl, evaluaciones: evaluaciones.length },
     });
     await registrarAudit({
@@ -179,6 +185,7 @@ export async function procesarCarga(entrada: EntradaCarga) {
       accion: "ia_extraer_ficha",
       entidad: "candidato_vacante",
       entidad_id: cv.data.id,
+      prueba: entrada.prueba,
       detalle: detalleAudit(salida),
     });
 

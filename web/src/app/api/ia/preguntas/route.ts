@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SalidaInvalidaError } from "@/lib/ia/llm";
 import { generarPreguntasParaCandidato, preguntasGuardadasDe } from "@/lib/ia/preguntas";
+import { esPrueba } from "@/lib/ia/prueba";
 import { TipoEntrevista } from "@/lib/ia/schemas";
 
 // Preguntas de entrevista de un candidato_vacante (agente 3).
@@ -32,7 +33,9 @@ export async function POST(req: Request) {
   }
   try {
     // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
-    const r = await generarPreguntasParaCandidato(p.data.candidato_vacante_id, p.data.tipo, { id: null, rol: null });
+    const r = await generarPreguntasParaCandidato(p.data.candidato_vacante_id, p.data.tipo, { id: null, rol: null }, {
+      prueba: esPrueba(req),
+    });
     if ("error" in r && r.error) {
       const errores = {
         no_encontrado: [404, "Candidato no encontrado en esa vacante"],

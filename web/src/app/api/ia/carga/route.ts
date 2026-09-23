@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ExtraccionInvalidaError } from "@/lib/ia/extractor";
+import { esPrueba } from "@/lib/ia/prueba";
 import { procesarCarga } from "@/lib/ia/servicio";
 
 // Carga de candidato nuevo (vista AT): CV + evaluación → extractor → BD.
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
       evaluacion: f.evaluacion_resumen ? { tipo: f.evaluacion_tipo, resumen: f.evaluacion_resumen } : null,
       // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
       actor: { id: null, rol: null },
+      prueba: esPrueba(req),
     });
     return Response.json({
       candidato_id: r.candidatoId,

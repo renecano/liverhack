@@ -12,7 +12,7 @@ import {
   type Ficha,
 } from "./schemas";
 import { crearVerificadorCitas, normalizar, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
-import { registrarAudit, type Actor } from "./servicio";
+import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
 import { supabaseAdmin } from "./supabase-provisional";
 import { temasProhibidos } from "./temas-prohibidos";
 
@@ -260,7 +260,7 @@ export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
   return { sugerencias };
 }
 
-export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) {
+export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, opciones: OpcionesAudit = {}) {
   const t0 = Date.now();
   const sb = supabaseAdmin();
   const cv = await sb
@@ -411,6 +411,7 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor) 
     accion: "ia_sugerir_vacantes",
     entidad: "candidato_vacante",
     entidad_id: candidatoVacanteId,
+    prueba: opciones.prueba,
     detalle: {
       agente: "sugeridor_vacantes",
       prompt: VERSION_PROMPT_SUGERENCIAS,

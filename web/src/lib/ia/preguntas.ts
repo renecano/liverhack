@@ -12,7 +12,7 @@ import {
   type Ficha,
   type TipoEntrevista,
 } from "./schemas";
-import { registrarAudit, type Actor } from "./servicio";
+import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
 import { temasProhibidos } from "./temas-prohibidos";
 import { supabaseAdmin } from "./supabase-provisional";
 
@@ -309,7 +309,12 @@ export async function preguntasGuardadasDe(candidatoVacanteId: string, tipo: Tip
 }
 
 // Carga los datos de un candidato_vacante, genera, guarda y audita.
-export async function generarPreguntasParaCandidato(candidatoVacanteId: string, tipo: TipoEntrevista, actor: Actor) {
+export async function generarPreguntasParaCandidato(
+  candidatoVacanteId: string,
+  tipo: TipoEntrevista,
+  actor: Actor,
+  opciones: OpcionesAudit = {},
+) {
   const sb = supabaseAdmin();
   const cv = await candidatoVacante(candidatoVacanteId);
   if (!cv) return { error: "no_encontrado" as const };
@@ -349,6 +354,7 @@ export async function generarPreguntasParaCandidato(candidatoVacanteId: string, 
     accion: "ia_generar_preguntas",
     entidad: "candidato_vacante",
     entidad_id: candidatoVacanteId,
+    prueba: opciones.prueba,
     detalle: {
       agente: "generador_preguntas",
       prompt: VERSION_PROMPT_PREGUNTAS,
