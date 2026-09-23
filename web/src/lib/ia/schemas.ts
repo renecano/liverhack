@@ -140,3 +140,30 @@ export const SalidaPreguntasLLM = z.object({
   ),
 });
 export type SalidaPreguntasLLM = z.infer<typeof SalidaPreguntasLLM>;
+
+// ---------------------------------------------------------------------------
+// Agente 6: sugeridor de vacantes (docs/04 §6).
+// sugerencias_vacante = {vacante_id_sugerida, score 0-100, motivo, estatus 'sugerida'}
+// ---------------------------------------------------------------------------
+export const CAMPOS_PERFIL_MOTIVO = ["escolaridad", ...CAMPOS_FICHA_ORIGEN, "evidencia_no_negociables"] as const;
+
+export const Sugerencia = z.object({
+  vacante_id_sugerida: z.guid(),
+  vacante_titulo: z.string(),
+  score: z.number().int().min(0).max(100),
+  motivo: z.string().min(1),
+  campo_ficha: z.enum(CAMPOS_PERFIL_MOTIVO),
+  estatus: z.literal("sugerida"),
+});
+export type Sugerencia = z.infer<typeof Sugerencia>;
+
+export const SalidaMotivosLLM = z.object({
+  motivos: z.array(
+    z.object({
+      vacante_id: z.string(),
+      motivo: z.string(),
+      campo_ficha: z.string(),
+    }),
+  ),
+});
+export type SalidaMotivosLLM = z.infer<typeof SalidaMotivosLLM>;

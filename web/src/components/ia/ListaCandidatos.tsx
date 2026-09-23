@@ -6,8 +6,11 @@ import type { FilaCandidato } from "@/lib/ia/consultas";
 import { mxn } from "@/lib/ia/formato";
 import { BadgeReferido } from "./BadgeReferido";
 import { PanelPreguntas } from "./PanelPreguntas";
+import { PanelSugerencias } from "./PanelSugerencias";
 import { Semaforo, SemaforoDetalle } from "./Semaforo";
 import { VisorCv } from "./VisorCv";
+
+const NO_SELECCIONADO = ["descartado", "pool"];
 
 const ESTATUS: Record<string, string> = {
   activo: "text-[var(--lh-ink-2)]",
@@ -41,6 +44,13 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
     setPreguntasDe((x) => (x === id ? null : id));
     setPanelesMontados((xs) => (xs.includes(id) ? xs : [...xs, id]));
   };
+  // Sugerencias de reubicación: solo para no seleccionados (descartado / pool).
+  const [sugerenciasDe, setSugerenciasDe] = useState<string | null>(null);
+  const [sugMontadas, setSugMontadas] = useState<string[]>([]);
+  const alternarSugerencias = (id: string) => {
+    setSugerenciasDe((x) => (x === id ? null : id));
+    setSugMontadas((xs) => (xs.includes(id) ? xs : [...xs, id]));
+  };
 
   const alternar = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
@@ -59,7 +69,7 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
               <th className="px-3 py-3 font-medium">No negociables</th>
               <th className="px-3 py-3 font-medium">Estatus</th>
               <th className="px-3 py-3 font-medium">CV</th>
-              <th className="px-3 py-3 font-medium">Entrevista</th>
+              <th className="px-3 py-3 font-medium">IA</th>
             </tr>
           </thead>
           <tbody>
@@ -121,17 +131,32 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
                       </button>
                     </td>
                     <td className="px-3 py-3">
-                      <button
-                        onClick={() => alternarPreguntas(f.id)}
-                        aria-expanded={preguntasDe === f.id}
-                        className={`whitespace-nowrap rounded border px-2.5 py-1 text-xs ${
-                          preguntasDe === f.id
-                            ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
-                            : "border-[var(--lh-rule)] hover:border-[var(--lh-ink)]"
-                        }`}
-                      >
-                        Preguntas
-                      </button>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => alternarPreguntas(f.id)}
+                          aria-expanded={preguntasDe === f.id}
+                          className={`whitespace-nowrap rounded border px-2.5 py-1 text-xs ${
+                            preguntasDe === f.id
+                              ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
+                              : "border-[var(--lh-rule)] hover:border-[var(--lh-ink)]"
+                          }`}
+                        >
+                          Preguntas
+                        </button>
+                        {NO_SELECCIONADO.includes(f.estatus) && (
+                          <button
+                            onClick={() => alternarSugerencias(f.id)}
+                            aria-expanded={sugerenciasDe === f.id}
+                            className={`whitespace-nowrap rounded border px-2.5 py-1 text-xs ${
+                              sugerenciasDe === f.id
+                                ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
+                                : "border-[var(--lh-rule)] hover:border-[var(--lh-ink)]"
+                            }`}
+                          >
+                            Sugerir vacantes
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {abierto === f.id && (
@@ -150,6 +175,14 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
                       <td />
                       <td colSpan={9} className="px-3 py-4">
                         <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} />
+                      </td>
+                    </tr>
+                  )}
+                  {sugMontadas.includes(f.id) && (
+                    <tr className="border-b border-[var(--lh-rule)] bg-[#f4f7f2]" hidden={sugerenciasDe !== f.id}>
+                      <td />
+                      <td colSpan={9} className="px-3 py-4">
+                        <PanelSugerencias candidatoVacanteId={f.id} />
                       </td>
                     </tr>
                   )}
