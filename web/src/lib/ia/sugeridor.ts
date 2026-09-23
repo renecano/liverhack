@@ -286,7 +286,31 @@ export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
   return { sugerencias };
 }
 
-export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, opciones: OpcionesAudit = {}) {
+// ---------------------------------------------------------------------------
+// API para el orquestador de Persona A (evento "reemparejar"): por candidato.
+// Toma su proceso no seleccionado (descartado/pool) en vacanteOrigenId o, si no
+// se indica, el más reciente. Solo sugiere y guarda; no mueve ni notifica.
+// ---------------------------------------------------------------------------
+export async function sugerirVacantes(
+  candidatoId: string,
+  opciones: { vacanteOrigenId?: string; actor?: Actor; prueba?: boolean } = {},
+) {
+  let q = supabaseAdmin()
+    .from("candidato_vacante")
+    .select("id")
+    .eq("candidato_id", candidatoId)
+    .in("estatus", [...ESTATUS_NO_SELECCIONADO])
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (opciones.vacanteOrigenId) q = q.eq("vacante_id", opciones.vacanteOrigenId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  if (!data?.length) return { error: "sin_proceso_no_seleccionado" as const };
+  return sugerirVacantesDeProceso(data[0].id, opciones.actor ?? { id: null, rol: null }, { prueba: opciones.prueba });
+}
+
+// Por candidato_vacante (lo usa la API de la lista de candidatos).
+export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor: Actor, opciones: OpcionesAudit = {}) {
   const t0 = Date.now();
   const sb = supabaseAdmin();
   const cv = await sb

@@ -197,3 +197,11 @@ export const SalidaVerificacionLLM = z.object({
   ),
 });
 export type SalidaVerificacionLLM = z.infer<typeof SalidaVerificacionLLM>;
+
+// Agente 5: feedback personalizado. El LLM reescribe el texto de un borrador
+// existente; nunca ve el nombre (usa {{nombre}}) y declara qué fortalezas usó.
+export const SalidaMensajeLLM = z.object({
+  mensaje: z.string(),
+  fortalezas_usadas: z.array(z.string()),
+});
+export type SalidaMensajeLLM = z.infer<typeof SalidaMensajeLLM>;

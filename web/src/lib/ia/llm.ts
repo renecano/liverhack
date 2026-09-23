@@ -3,7 +3,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import type { z } from "zod";
 import { openai } from "./openai";
 
-// Ciclo común de los agentes: LLM con temperature 0 y salida con schema →
+// Ciclo común de los agentes: LLM (temperature 0 por defecto) y salida con schema →
 // zod → validación de negocio → reintento con el motivo del fallo.
 // Si nunca valida, lanza SalidaInvalidaError (la API responde 422) y nada se guarda.
 
@@ -29,6 +29,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
   nombreSchema: string;
   validar: (crudo: z.infer<S>) => Validacion<R> | Promise<Validacion<R>>;
   maxIntentos?: number;
+  temperatura?: number; // 0 salvo justificación explícita del agente
 }): Promise<{ valor: R; modelo: string; intentos: number; erroresPrevios: string[]; uso: UsoTokens }> {
   const max = opts.maxIntentos ?? 3;
   const mensajes: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -42,7 +43,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
   for (let intento = 1; intento <= max; intento++) {
     const r = await openai().chat.completions.create({
       model: opts.modelo,
-      temperature: 0,
+      temperature: opts.temperatura ?? 0,
       seed: 7,
       messages: mensajes,
       response_format: zodResponseFormat(opts.schema, opts.nombreSchema),

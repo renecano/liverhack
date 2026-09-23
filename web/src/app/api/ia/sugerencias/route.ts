@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SalidaInvalidaError } from "@/lib/ia/llm";
 import { esPrueba } from "@/lib/ia/prueba";
-import { sugerenciasGuardadasDe, sugerirVacantes } from "@/lib/ia/sugeridor";
+import { sugerenciasGuardadasDe, sugerirVacantesDeProceso } from "@/lib/ia/sugeridor";
 
 // Sugerencias de vacantes para un candidato no seleccionado (agente 6).
 // GET: lo guardado (sin regenerar). POST: sugiere y reemplaza las 'sugerida'
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   }
   try {
     // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
-    const r = await sugerirVacantes(p.data.candidato_vacante_id, { id: null, rol: null }, { prueba: esPrueba(req) });
+    const r = await sugerirVacantesDeProceso(p.data.candidato_vacante_id, { id: null, rol: null }, { prueba: esPrueba(req) });
     if ("error" in r && r.error) {
       const errores = {
         no_encontrado: [404, "Candidato no encontrado en esa vacante"],
