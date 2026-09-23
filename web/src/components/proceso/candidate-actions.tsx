@@ -6,7 +6,10 @@ import { confirmarPasoHM, registrarDecision } from '@/lib/actions/proceso';
 import type { EstadoProceso, TipoDecision } from '@/lib/supabase/types';
 
 const etiquetas: Record<TipoDecision, string> = { avanzar_oferta: 'Avanzar a oferta', reemparejar: 'Re-emparejar', pool: 'Enviar al pool', finalista: 'Finalista', descartado: 'Descartado' };
+// Compuertas que el HM resuelve a nivel vacante (sin candidato): valida NNN, perfiles, pool.
 const compuertas = new Set<EstadoProceso>(['ESPERANDO_HM_VALIDA_NNN', 'ESPERANDO_HM_SELECCIONA_PERFILES', 'ESPERANDO_HM_DEFINE_POOL']);
+// Sólo aquí el HM decide sobre candidatos concretos (ver TRANSICIONES/EFECTO_DECISION).
+const DECISIONES_FINALISTA: TipoDecision[] = ['finalista', 'avanzar_oferta', 'reemparejar', 'pool', 'descartado'];
 
 export function CandidateActions({ vacanteId, candidatoId, estado }: { vacanteId: string; candidatoId?: string; estado: EstadoProceso }) {
   const router = useRouter();
@@ -14,10 +17,21 @@ export function CandidateActions({ vacanteId, candidatoId, estado }: { vacanteId
   const [justificacion, setJustificacion] = useState('');
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const acciones: TipoDecision[] = estado === 'ESPERANDO_HM_DECIDE_FINALISTA' ? ['finalista', 'avanzar_oferta', 'reemparejar', 'pool', 'descartado'] : ['reemparejar', 'pool', 'descartado'];
-  if (compuertas.has(estado)) return <div><button onClick={() => setAccion('confirmar')} className="rounded-md bg-[#c8105a] px-3 py-2 text-sm font-semibold text-white">Confirmar paso del HM</button><Justificacion abierta={accion === 'confirmar'} etiqueta="Confirmar paso del HM" valor={justificacion} onChange={setJustificacion} mensaje={mensaje} enviando={enviando} onCancel={() => setAccion(null)} onConfirm={async () => { setEnviando(true); const r = await confirmarPasoHM(vacanteId, justificacion); setEnviando(false); setMensaje(r.ok ? 'Paso confirmado. El estado se actualizó.' : `${r.codigo}: ${r.error}`); if (r.ok) { setAccion(null); setJustificacion(''); router.refresh(); } }} /></div>;
-  if (!candidatoId || estado === 'CUBIERTA' || estado === 'CANCELADA') return null;
-  return <div className="flex flex-wrap gap-2">{acciones.map((decision) => <button key={decision} onClick={() => { setAccion(decision); setMensaje(null); }} className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold ${decision === 'descartado' ? 'border-rose-200 text-rose-700' : 'border-stone-300 text-slate-700 hover:border-[#c8105a]'}`}>{etiquetas[decision]}</button>)}<Justificacion abierta={!!accion && accion !== 'confirmar'} etiqueta={accion && accion !== 'confirmar' ? etiquetas[accion] : ''} valor={justificacion} onChange={setJustificacion} mensaje={mensaje} enviando={enviando} onCancel={() => setAccion(null)} onConfirm={async () => { if (!accion || accion === 'confirmar') return; setEnviando(true); const r = await registrarDecision(vacanteId, candidatoId, accion, justificacion); setEnviando(false); setMensaje(r.ok ? 'Decisión registrada y auditada.' : `${r.codigo}: ${r.error}`); if (r.ok) { setAccion(null); setJustificacion(''); router.refresh(); } }} /></div>;
+
+  // Compuerta general (nivel vacante): un único botón "Confirmar paso del HM".
+  if (compuertas.has(estado)) return <div><button onClick={() => { setAccion('confirmar'); setMensaje(null); }} className="rounded-md bg-[#c8105a] px-3 py-2 text-sm font-semibold text-white">Confirmar paso del HM</button><Justificacion abierta={accion === 'confirmar'} etiqueta="Confirmar paso del HM" valor={justificacion} onChange={setJustificacion} mensaje={mensaje} enviando={enviando} onCancel={() => { setAccion(null); setMensaje(null); }} onConfirm={async () => { setEnviando(true); const r = await confirmarPasoHM(vacanteId, justificacion); setEnviando(false); setMensaje(r.ok ? 'Paso confirmado. El estado se actualizó.' : traducirError(r.codigo, r.error)); if (r.ok) { setAccion(null); setJustificacion(''); router.refresh(); } }} /></div>;
+
+  // Decisiones sobre un candidato: SOLO en la compuerta de finalista. En cualquier otro
+  // estado no hay acción válida del HM sobre candidatos, así que no se muestra nada.
+  if (!candidatoId || estado !== 'ESPERANDO_HM_DECIDE_FINALISTA') return null;
+  return <div className="flex flex-wrap gap-2">{DECISIONES_FINALISTA.map((decision) => <button key={decision} onClick={() => { setAccion(decision); setMensaje(null); }} className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold ${decision === 'descartado' ? 'border-rose-200 text-rose-700' : 'border-stone-300 text-slate-700 hover:border-[#c8105a]'}`}>{etiquetas[decision]}</button>)}<Justificacion abierta={!!accion && accion !== 'confirmar'} etiqueta={accion && accion !== 'confirmar' ? etiquetas[accion] : ''} valor={justificacion} onChange={setJustificacion} mensaje={mensaje} enviando={enviando} onCancel={() => { setAccion(null); setMensaje(null); }} onConfirm={async () => { if (!accion || accion === 'confirmar') return; setEnviando(true); const r = await registrarDecision(vacanteId, candidatoId, accion, justificacion); setEnviando(false); setMensaje(r.ok ? 'Decisión registrada y auditada.' : traducirError(r.codigo, r.error)); if (r.ok) { setAccion(null); setJustificacion(''); router.refresh(); } }} /></div>;
+}
+
+/** Mensajes claros para los errores de gobernanza que devuelve el orquestador. */
+function traducirError(codigo: string, error: string): string {
+  if (codigo === 'JUSTIFICACION_OBLIGATORIA') return 'La justificación es obligatoria: escribe el motivo para el expediente.';
+  if (codigo === 'TRANSICION_INVALIDA') return `Acción no válida para el estado actual. ${error}`;
+  return `${codigo}: ${error}`;
 }
 
 function Justificacion({ abierta, etiqueta, valor, onChange, mensaje, enviando, onCancel, onConfirm }: { abierta: boolean; etiqueta: string; valor: string; onChange: (v: string) => void; mensaje: string | null; enviando: boolean; onCancel: () => void; onConfirm: () => void }) {
