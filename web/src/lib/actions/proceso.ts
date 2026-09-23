@@ -9,7 +9,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Notificacion, RolUsuario, TipoDecision } from "@/lib/supabase/types";
+import { enviarCorreo } from "@/lib/acciones/email";
+import type { Notificacion, RolUsuario, TipoDecision, TipoNotificacion } from "@/lib/supabase/types";
 import {
   abrirVacante as abrirVacanteOrq,
   ErrorProceso,
@@ -182,16 +183,42 @@ export async function abrirVacante(input: z.input<typeof abrirVacanteSchema>) {
   }
 }
 
+export interface ResumenEnvio {
+  aprobadas: number;
+  enviadas: number;
+  /** enviadas con Resend (envío real). */
+  reales: number;
+  /** enviadas en modo simulado (sin RESEND_API_KEY o ACTIONS_MODE=mock). */
+  simuladas: number;
+  /** aprobadas pero cuyo envío de correo falló (quedan en 'aprobada'). */
+  fallidas: number;
+}
+
+function asuntoNotificacion(tipo: TipoNotificacion): string {
+  switch (tipo) {
+    case 'cambio_etapa': return 'LivHire · Actualización de tu proceso';
+    case 'resultado': return 'LivHire · Resultado de tu proceso';
+    case 'recordatorio': return 'LivHire · Recordatorio';
+    case 'escalacion': return 'LivHire · Escalación de SLA';
+    case 'reactivacion': return 'LivHire · Reactivación de proceso';
+    default: return 'LivHire';
+  }
+}
+
 /**
- * Aprueba los borradores visibles y simula su envío para la demo P0. El correo
- * real queda explícitamente fuera de esta acción; cada cambio queda auditado.
+ * Aprueba los borradores visibles (gobernanza: un humano aprueba) y ENVÍA los ya
+ * aprobados. Para cada notificación de canal 'correo' llama a enviarCorreo (real si
+ * hay RESEND_API_KEY y ACTIONS_MODE!='mock'; simulado si no) y solo marca 'enviada'
+ * cuando el envío tuvo éxito. Las de canal 'portal' se entregan in-app. Nada en
+ * 'borrador' se envía; cada envío/fallo queda en audit_log con el modo y el id del mensaje.
  */
-export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultado<{ aprobadas: number }>> {
+export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultado<ResumenEnvio>> {
   const s = await sesion();
   if (!s) return NO_AUTENTICADO;
   if (!['hm', 'hrbp', 'at', 'admin'].includes(s.usuario.rol)) return NO_AUTORIZADO;
   const validos = [...new Set(ids)].filter((notificacionId) => id.safeParse(notificacionId).success);
-  if (validos.length === 0) return { ok: true, data: { aprobadas: 0 } };
+  const vacio: ResumenEnvio = { aprobadas: 0, enviadas: 0, reales: 0, simuladas: 0, fallidas: 0 };
+  if (validos.length === 0) return { ok: true, data: vacio };
 
   try {
     // La lectura con el cliente de sesión limita el lote a notificaciones visibles por RLS.
@@ -199,9 +226,10 @@ export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultad
       await s.supabase.from('notificaciones').select('*').in('id', validos).eq('estatus', 'borrador'),
       'borradores visibles',
     );
-    if (borradores.length === 0) return { ok: true, data: { aprobadas: 0 } };
+    if (borradores.length === 0) return { ok: true, data: vacio };
 
     const db = createAdminClient();
+    const actor = { id: s.usuario.id, rol: s.usuario.rol };
     const aprobadas = revisar<Notificacion[]>(
       await db
         .from('notificaciones')
@@ -211,25 +239,75 @@ export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultad
       'aprobar notificaciones',
     );
     for (const notificacion of aprobadas) {
-      await registrarAudit(db, { id: s.usuario.id, rol: s.usuario.rol }, 'aprobar_notificacion_lote', 'notificaciones', notificacion.id, {
+      await registrarAudit(db, actor, 'aprobar_notificacion_lote', 'notificaciones', notificacion.id, {
         estatus_anterior: 'borrador',
         estatus_nuevo: 'aprobada',
-        envio: 'simulado_p1',
       });
     }
-    const enviadas = revisar<Notificacion[]>(
-      await db.from('notificaciones').update({ estatus: 'enviada' }).in('id', aprobadas.map((n) => n.id)).select(),
-      'envío simulado de notificaciones',
-    );
-    for (const notificacion of enviadas) {
-      await registrarAudit(db, { id: s.usuario.id, rol: s.usuario.rol }, 'enviar_notificacion_simulado', 'notificaciones', notificacion.id, {
-        estatus_anterior: 'aprobada',
-        estatus_nuevo: 'enviada',
+
+    // Resolver el correo de cada destinatario (polimórfico: candidato o usuario).
+    const correo = aprobadas.filter((n) => n.canal === 'correo');
+    const portal = aprobadas.filter((n) => n.canal !== 'correo');
+    const candIds = [...new Set(correo.filter((n) => n.destinatario_tipo === 'candidato').map((n) => n.destinatario_id))];
+    const userIds = [...new Set(correo.filter((n) => n.destinatario_tipo === 'usuario').map((n) => n.destinatario_id))];
+    const emailPorId = new Map<string, string>();
+    if (candIds.length) {
+      const cs = revisar<{ id: string; email: string }[]>(await db.from('candidatos').select('id, email').in('id', candIds), 'emails candidatos');
+      cs.forEach((c) => emailPorId.set(c.id, c.email));
+    }
+    if (userIds.length) {
+      const us = revisar<{ id: string; email: string }[]>(await db.from('usuarios').select('id, email').in('id', userIds), 'emails usuarios');
+      us.forEach((u) => emailPorId.set(u.id, u.email));
+    }
+
+    const resumen: ResumenEnvio = { aprobadas: aprobadas.length, enviadas: 0, reales: 0, simuladas: 0, fallidas: 0 };
+    const enviadasIds: string[] = [];
+
+    // Canal portal: entrega in-app, no requiere correo.
+    for (const n of portal) {
+      enviadasIds.push(n.id);
+      resumen.enviadas += 1;
+      await registrarAudit(db, actor, 'enviar_notificacion', 'notificaciones', n.id, {
+        estatus_anterior: 'aprobada', estatus_nuevo: 'enviada', canal: 'portal', modo: 'portal',
       });
     }
+
+    // Canal correo: envío real o simulado; solo se marca 'enviada' si tuvo éxito.
+    for (const n of correo) {
+      const to = emailPorId.get(n.destinatario_id);
+      if (!to) {
+        resumen.fallidas += 1;
+        await registrarAudit(db, actor, 'enviar_notificacion_fallo', 'notificaciones', n.id, {
+          canal: 'correo', motivo: 'sin_email_destinatario', destinatario_tipo: n.destinatario_tipo, destinatario_id: n.destinatario_id,
+        });
+        continue;
+      }
+      const r = await enviarCorreo({ to, asunto: asuntoNotificacion(n.tipo), cuerpo: n.contenido ?? '' });
+      if (r.ok) {
+        enviadasIds.push(n.id);
+        resumen.enviadas += 1;
+        if (r.modo === 'real') resumen.reales += 1; else resumen.simuladas += 1;
+        await registrarAudit(db, actor, 'enviar_notificacion', 'notificaciones', n.id, {
+          estatus_anterior: 'aprobada', estatus_nuevo: 'enviada', canal: 'correo', modo: r.modo, mensaje_id: r.id,
+        });
+      } else {
+        resumen.fallidas += 1;
+        await registrarAudit(db, actor, 'enviar_notificacion_fallo', 'notificaciones', n.id, {
+          canal: 'correo', modo: r.modo, error: r.error ?? 'desconocido',
+        });
+      }
+    }
+
+    if (enviadasIds.length) {
+      revisar<Notificacion[]>(
+        await db.from('notificaciones').update({ estatus: 'enviada' }).in('id', enviadasIds).select(),
+        'marcar enviadas',
+      );
+    }
+
     revalidatePath('/hm');
     revalidatePath('/hrbp');
-    return { ok: true, data: { aprobadas: aprobadas.length } };
+    return { ok: true, data: resumen };
   } catch (e) {
     return fallo(e);
   }
