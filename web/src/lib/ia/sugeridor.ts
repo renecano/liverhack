@@ -11,6 +11,7 @@ import {
   type CumpleNoNegociable,
   type Ficha,
 } from "./schemas";
+import { clasificarNoNegociable } from "./obtenible";
 import { crearVerificadorCitas, normalizar, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
 import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
 import { supabaseAdmin } from "./supabase-provisional";
@@ -21,13 +22,18 @@ import { temasProhibidos } from "./temas-prohibidos";
 //    por similitud coseno (en código; sin pgvector ni cambios en la BD).
 // 2) Filtro estricto: para el top 5, el LLM evalúa cada no negociable con el mismo
 //    semáforo del extractor (cumple / parcial / no_cumple + cita literal del perfil).
-//    Se excluye toda vacante con algún no_cumple; los parciales se permiten.
+//    Exclusión: 1 no_cumple sustantivo o 2+ no_cumple. Un único no_cumple
+//    obtenible (regla en código, lib/ia/obtenible.ts) se queda con penalización.
 // 3) El LLM redacta el motivo del top 3 (los parciales aparecen como "validar …").
 // Solo sugiere: no mueve al candidato ni envía nada.
 
-export const VERSION_PROMPT_SUGERENCIAS = "sugerencias-v2";
+export const VERSION_PROMPT_SUGERENCIAS = "sugerencias-v3";
 const MAX_SUGERENCIAS = 3;
 const MAX_VERIFICAR = 5;
+// Un no_cumple obtenible (certificación, curso, diplomado) no excluye la vacante: resta puntos.
+const PENALIZACION_OBTENIBLE = 15;
+
+type DecisionVacante = "ok" | "penalizada_obtenible" | "excluida_sustantivo" | "excluida_multiple";
 
 // Heurísticas de ranking calibradas con el seed (text-embedding-3-small).
 // Con el filtro del LLM, el piso vuelve a 0.50: las vacantes débiles que antes
@@ -101,13 +107,14 @@ ${REGLAS_SEMAFORO}
 - Tú no decides nada: solo evalúas evidencia.`;
 
 const SISTEMA_MOTIVOS = `Eres el Sugeridor de vacantes de LivHire (El Puerto de Liverpool).
-Un candidato no fue seleccionado para su vacante. Ya se eligieron otras vacantes abiertas que encajan con su perfil y cuyos no negociables no están en "no cumple".
+Un candidato no fue seleccionado para su vacante. Ya se eligieron otras vacantes abiertas que encajan con su perfil; ninguna tiene no negociables sustantivos sin cumplir.
 Tu única tarea es redactar el MOTIVO de cada sugerencia.
 
 Reglas:
 - Un motivo por cada vacante recibida (usa su vacante_id exacto), en español, 1 o 2 oraciones, máximo 45 palabras, tono profesional y cálido.
 - Explica qué del perfil encaja con la vacante.
-- Si la vacante trae no negociables en PARCIAL, el motivo debe incluir la palabra "validar" seguida de qué validar (ej. "validar la certificación cloud vigente").
+- Si la vacante trae no negociables en PARCIAL, el motivo debe incluir la palabra "validar" seguida de qué validar (ej. "validar la experiencia liderando equipos").
+- Si la vacante trae un no negociable NO CUMPLIDO pero obtenible, el motivo debe incluir la palabra "obtener" seguida de qué obtener (ej. "obtener la certificación cloud vigente").
 - "campo_ficha": el campo del perfil en que te basaste; debe ser uno de: ${CAMPOS_PERFIL_MOTIVO.join(", ")}.
 - Evaluación ciega: el perfil viene anonimizado. No menciones ni infieras nombre, edad, género, estado civil, familia, salud, origen ni domicilio.
 - No prometas contratación ni decidas nada: solo sugieres.`;
@@ -139,7 +146,10 @@ function validarVerificacion(
   return { ok: true as const, valor: semaforos };
 }
 
-function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante; semaforo: CumpleNoNegociable[] }[]) {
+function validarMotivos(
+  crudo: SalidaMotivosLLM,
+  top: { v: Vacante; semaforo: CumpleNoNegociable[]; obtenibles: { texto: string }[] }[],
+) {
   const errores: string[] = [];
   const porId = new Map(top.map((t) => [t.v.id, t]));
   const vistos = new Set<string>();
@@ -158,6 +168,9 @@ function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante; semaforo: Cu
     }
     if (t && t.semaforo.some((s) => s.estado === "parcial") && !normalizar(m.motivo).includes("validar")) {
       errores.push(`El motivo de ${m.vacante_id} debe decir "validar …" para sus no negociables en parcial`);
+    }
+    if (t && t.obtenibles.length && !normalizar(m.motivo).includes("obtener")) {
+      errores.push(`El motivo de ${m.vacante_id} debe decir "obtener …" para: ${t.obtenibles.map((o) => o.texto).join("; ")}`);
     }
     const temas = temasProhibidos(m.motivo);
     if (temas.length) errores.push(`El motivo de ${m.vacante_id} toca un tema prohibido (${temas.join(", ")})`);
@@ -305,7 +318,14 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, 
     ...(decididas.data ?? []).map((r) => r.vacante_id_sugerida as string),
   ]);
   const todas = (vacs.data ?? []) as Vacante[];
-  const filtros = { ya_participa_o_decidida: 0, sin_no_negociables: 0, similitud_baja: 0, fuera_del_top: 0, no_cumple: 0 };
+  const filtros = {
+    ya_participa_o_decidida: 0,
+    sin_no_negociables: 0,
+    similitud_baja: 0,
+    fuera_del_top: 0,
+    no_cumple_sustantivo: 0,
+    no_cumple_multiple: 0,
+  };
   const candidatas = todas
     .filter((v) => {
       if (excluidas.has(v.id)) return (filtros.ya_participa_o_decidida++, false);
@@ -351,12 +371,30 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, 
   }
   const msVer = Date.now() - tVer;
 
+  // Regla de exclusión (clasificación "obtenible" en código, lib/ia/obtenible.ts):
+  //  0 no_cumple → se queda; 1 no_cumple obtenible → se queda con -PENALIZACION
+  //  y el motivo dice "validar u obtener …"; 1 sustantivo o 2+ no_cumple → fuera.
   const verificadas = aVerificar.map(({ v, sim }) => {
     const semaforo = verificacion?.semaforos.get(v.id) ?? [];
-    return { v, sim, semaforo, excluida: semaforo.some((s) => s.estado === "no_cumple") };
+    const noCumple = v.no_negociables.filter((n) => semaforo.find((s) => s.no_negociable_id === n.id)?.estado === "no_cumple");
+    const clases = noCumple.map((n) => ({ texto: n.texto, ...clasificarNoNegociable(n.texto) }));
+    const decision: DecisionVacante =
+      noCumple.length === 0
+        ? "ok"
+        : noCumple.length >= 2
+          ? "excluida_multiple"
+          : clases[0].obtenible
+            ? "penalizada_obtenible"
+            : "excluida_sustantivo";
+    const puntaje = Math.max(0, score(sim) - (decision === "penalizada_obtenible" ? PENALIZACION_OBTENIBLE : 0));
+    return { v, sim, semaforo, decision, puntaje, obtenibles: decision === "penalizada_obtenible" ? clases : [], clases };
   });
-  filtros.no_cumple = verificadas.filter((x) => x.excluida).length;
-  const top = verificadas.filter((x) => !x.excluida).slice(0, MAX_SUGERENCIAS);
+  filtros.no_cumple_sustantivo = verificadas.filter((x) => x.decision === "excluida_sustantivo").length;
+  filtros.no_cumple_multiple = verificadas.filter((x) => x.decision === "excluida_multiple").length;
+  const top = verificadas
+    .filter((x) => x.decision === "ok" || x.decision === "penalizada_obtenible")
+    .sort((a, b) => b.puntaje - a.puntaje)
+    .slice(0, MAX_SUGERENCIAS);
 
   // 3) Motivos (solo el top 3); los parciales se mencionan como "validar …".
   let sugerencias: Sugerencia[] = [];
@@ -364,10 +402,12 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, 
   const tMot = Date.now();
   if (top.length) {
     const vacantes = top
-      .map(({ v, semaforo }) => {
+      .map(({ v, semaforo, obtenibles }) => {
         const parciales = v.no_negociables.filter((n) => semaforo.find((s) => s.no_negociable_id === n.id)?.estado === "parcial");
         return `${bloqueVacante(v, false)}\nNo negociables en PARCIAL (menciónalos como "validar …"): ${
           parciales.length ? parciales.map((n) => n.texto).join("; ") : "ninguno"
+        }\nNo negociable NO CUMPLIDO pero obtenible (menciónalo como "obtener …"): ${
+          obtenibles.length ? obtenibles.map((n) => n.texto).join("; ") : "ninguno"
         }`;
       })
       .join("\n\n");
@@ -382,10 +422,10 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, 
     motivosLLM = { modelo: r.modelo, intentos: r.intentos, erroresPrevios: r.erroresPrevios, uso: r.uso };
     const motivos = new Map(r.valor.map((m) => [m.vacante_id, m]));
     sugerencias = Sugerencia.array().parse(
-      top.map(({ v, sim }) => ({
+      top.map(({ v, puntaje }) => ({
         vacante_id_sugerida: v.id,
         vacante_titulo: v.titulo,
-        score: score(sim),
+        score: puntaje,
         motivo: motivos.get(v.id)!.motivo.trim(),
         campo_ficha: motivos.get(v.id)!.campo_ficha,
         estatus: "sugerida",
@@ -414,9 +454,10 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, 
   };
   const resumenVerificadas = verificadas.map((x) => ({
     vacante_id: x.v.id,
-    score: score(x.sim),
+    score: x.puntaje,
     semaforo: x.semaforo.map((s) => s.estado),
-    excluida: x.excluida,
+    decision: x.decision,
+    reglas_no_cumple: x.clases.map((c) => c.regla),
   }));
 
   await registrarAudit({
