@@ -9,7 +9,7 @@ export function BotonCv({ candidatoId, nombre }: { candidatoId: string; nombre: 
     <>
       <button
         onClick={() => setAbierto(true)}
-        className="rounded border border-[var(--lh-rule)] px-2.5 py-1 text-xs hover:border-[var(--lh-ink)]"
+        className="whitespace-nowrap rounded border border-[var(--lh-rule)] px-2.5 py-1 text-xs hover:border-[var(--lh-ink)]"
       >
         Ver CV (PDF)
       </button>

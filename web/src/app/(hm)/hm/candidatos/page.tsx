@@ -16,7 +16,7 @@ export default async function CandidatosPage({ searchParams }: PageProps<"/hm/ca
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--lh-accent)]">Lista de candidatos</p>
-          <h1 className="font-[family-name:var(--font-display)] text-4xl font-semibold tracking-tight">
+          <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">
             {vacanteId ? (vacantes.find((v) => v.id === vacanteId)?.titulo ?? "Vacante") : "Todas las vacantes"}
           </h1>
           <p className="mt-1 text-sm text-[var(--lh-muted)]">
@@ -43,7 +43,7 @@ export default async function CandidatosPage({ searchParams }: PageProps<"/hm/ca
         ))}
       </nav>
 
-      <div className="mb-3 flex items-center gap-4 text-xs text-[var(--lh-muted)]">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--lh-muted)]">
         <Leyenda color="var(--lh-ok)">Cumple</Leyenda>
         <Leyenda color="var(--lh-warn)">Parcial</Leyenda>
         <Leyenda color="var(--lh-bad)">No cumple</Leyenda>

@@ -174,16 +174,16 @@ export default async function CompararPage({ searchParams }: PageProps<"/hm/cand
       </div>
 
       <div className="overflow-x-auto rounded-md border border-[var(--lh-rule)] bg-[var(--lh-card)]">
-        <table className="w-full border-collapse text-left text-[13px] leading-relaxed">
+        <table className="w-full table-fixed border-collapse text-left text-[13px] leading-relaxed" style={{ minWidth: 208 + cands.length * 280 }}>
           <thead>
             <tr className="border-b-2 border-[var(--lh-ink)]">
-              <th className="sticky left-0 z-10 w-52 min-w-52 bg-[var(--lh-card)] px-4 py-4 align-bottom text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--lh-muted)]">
+              <th className="sticky left-0 z-10 w-52 bg-[var(--lh-card)] px-4 py-4 align-bottom text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--lh-muted)]">
                 Aspecto
               </th>
               {cands.map((c, i) => (
                 <th
                   key={c.id}
-                  className="lh-rise min-w-[280px] border-l border-[var(--lh-rule)] px-4 py-4 align-bottom font-normal"
+                  className="lh-rise border-l border-[var(--lh-rule)] px-4 py-4 align-bottom font-normal"
                   style={{ animationDelay: `${i * 60}ms` }}
                 >
                   <div className="flex flex-wrap items-center gap-2">

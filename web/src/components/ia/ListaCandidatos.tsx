@@ -41,7 +41,7 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
       <div className="overflow-x-auto rounded-md border border-[var(--lh-rule)] bg-[var(--lh-card)]">
         <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-[var(--lh-rule)] text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">
+            <tr className="border-b border-[var(--lh-rule)] whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">
               <th className="w-10 px-4 py-3" />
               <th className="px-3 py-3 font-medium">Candidato</th>
               <th className="px-3 py-3 font-medium">Vacante</th>
@@ -106,7 +106,7 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
                     <td className="px-3 py-3">
                       <button
                         onClick={() => setCv(f)}
-                        className="rounded border border-[var(--lh-rule)] px-2.5 py-1 text-xs hover:border-[var(--lh-ink)]"
+                        className="whitespace-nowrap rounded border border-[var(--lh-rule)] px-2.5 py-1 text-xs hover:border-[var(--lh-ink)]"
                       >
                         Ver PDF
                       </button>
@@ -129,6 +129,9 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
           </tbody>
         </table>
       </div>
+
+      {/* Espacio para que la barra flotante no tape la última fila. */}
+      {sel.length > 0 && <div className="h-20" aria-hidden />}
 
       {sel.length > 0 && (
         <div className="lh-rise fixed inset-x-0 bottom-6 z-40 mx-auto flex w-fit items-center gap-4 rounded-full bg-[var(--lh-ink)] py-2 pl-5 pr-2 text-sm text-white shadow-xl">

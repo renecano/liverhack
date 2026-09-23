@@ -17,12 +17,12 @@ export function Shell({ rol, children }: { rol: "HM" | "AT"; children: React.Rea
   return (
     <div className={`${display.variable} ${sans.variable} ${mono.variable} lh-shell min-h-screen`}>
       <header className="border-b border-[var(--lh-rule)] bg-[var(--lh-paper)]/90 backdrop-blur sticky top-0 z-30">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-8 px-6 py-3">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3 sm:px-6">
           <Link href="/hm/candidatos" className="flex items-baseline gap-2">
             <span className="font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">LivHire</span>
-            <span className="text-[11px] uppercase tracking-[0.2em] text-[var(--lh-muted)]">Atracción de talento</span>
+            <span className="hidden text-[11px] uppercase tracking-[0.2em] text-[var(--lh-muted)] sm:inline">Atracción de talento</span>
           </Link>
-          <nav className="flex gap-5 text-sm">
+          <nav className="flex gap-5 whitespace-nowrap text-sm">
             {NAV.map((n) => (
               <Link key={n.href} href={n.href} className="text-[var(--lh-ink-2)] hover:text-[var(--lh-accent)]">
                 {n.label}
@@ -34,7 +34,7 @@ export function Shell({ rol, children }: { rol: "HM" | "AT"; children: React.Rea
           </span>
         </div>
       </header>
-      <main className="mx-auto max-w-[1400px] px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6">{children}</main>
     </div>
   );
 }

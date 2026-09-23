@@ -83,7 +83,13 @@ export function FormCarga({ vacantes }: { vacantes: { id: string; titulo: string
         </div>
         <div>
           <label className={etiqueta} htmlFor="cv_pdf">CV (PDF)</label>
-          <input id="cv_pdf" name="cv_pdf" type="file" accept="application/pdf" className="text-sm" />
+          <input
+            id="cv_pdf"
+            name="cv_pdf"
+            type="file"
+            accept="application/pdf"
+            className="block w-full text-sm text-[var(--lh-ink-2)] file:mr-3 file:rounded-sm file:border file:border-[var(--lh-ink)] file:bg-transparent file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-[var(--lh-ink)] hover:file:text-white"
+          />
           <details className="mt-2 text-xs text-[var(--lh-muted)]">
             <summary className="cursor-pointer">…o pega el texto del CV</summary>
             <textarea name="cv_texto" rows={6} className={`${campo} mt-2`} />
