@@ -24,27 +24,3 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
-
-/* ---- Vistas de candidatos (Persona B) ---------------------------------- */
-.lh-shell {
-  --lh-paper: #f6f3ee;
-  --lh-card: #fffdf9;
-  --lh-ink: #1c1917;
-  --lh-ink-2: #44403c;
-  --lh-muted: #78716c;
-  --lh-rule: #e2dcd2;
-  --lh-accent: #c8007f;
-  --lh-ok: #15803d;
-  --lh-warn: #d97706;
-  --lh-bad: #dc2626;
-  background:
-    radial-gradient(1200px 400px at 90% -10%, #f3e3ea 0%, transparent 60%),
-    var(--lh-paper);
-  color: var(--lh-ink);
-  font-family: var(--font-body), ui-sans-serif, sans-serif;
-  color-scheme: light;
-}
-.lh-shell .num { font-family: var(--font-data), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-@keyframes lh-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.lh-rise { animation: lh-rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-@media (prefers-reduced-motion: reduce) { .lh-rise { animation: none; } }

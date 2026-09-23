@@ -1,5 +1,5 @@
 import "server-only";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/ia/supabase-provisional";
 import { extraerFicha, VERSION_PROMPT, type SalidaExtractor } from "./extractor";
 
 // Capa de persistencia del agente 2. Frontera con Persona A (docs/06):
@@ -41,19 +41,9 @@ export async function textoDePdf(pdf: Uint8Array): Promise<string> {
   }
 }
 
-// Storage de CVs. cv_url sigue la convención del seed: "<bucket>/<ruta>".
-async function asegurarBucketCv() {
-  const sb = supabaseAdmin();
-  const { data } = await sb.storage.getBucket(BUCKET_CV);
-  if (data) return;
-  const { error } = await sb.storage.createBucket(BUCKET_CV, {
-    public: false,
-    allowedMimeTypes: ["application/pdf"],
-    fileSizeLimit: "10MB",
-  });
-  if (error && !/already exists/i.test(error.message)) throw new Error(`Storage: ${error.message}`);
-}
-
+// Storage de CVs. El bucket "cv" es infraestructura de Persona A (ya existe en
+// el proyecto hosted); aquí solo se sube/lee. cv_url sigue la convención del
+// seed: "<bucket>/<ruta>".
 export function rutaStorage(cvUrl: string): { bucket: string; ruta: string } | null {
   const i = cvUrl.indexOf("/");
   if (i <= 0) return null;
@@ -145,7 +135,6 @@ export async function procesarCarga(entrada: EntradaCarga) {
   try {
     let cvUrl: string | null = null;
     if (entrada.cvPdf) {
-      await asegurarBucketCv();
       const ruta = `${candidatoId}.pdf`;
       const up = await sb.storage
         .from(BUCKET_CV)

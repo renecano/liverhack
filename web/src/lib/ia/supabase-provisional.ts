@@ -1,8 +1,13 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Cliente de servidor con service_role: omite RLS. Solo para jobs server-side
-// (IA, seed, orquestador). Nunca importarlo desde un Client Component.
+// PROVISIONAL — se reemplaza por el cliente oficial de Persona A
+// (web/src/lib/supabase/admin.ts) al hacer merge. Es el único punto de acceso
+// a Supabase del dominio IA: al integrar, basta con re-exportar el de A aquí
+// o cambiar los imports de "./supabase-provisional". No agregar lógica.
+//
+// Cliente de servidor con service_role (omite RLS). Nunca importarlo desde un
+// Client Component.
 let cliente: SupabaseClient | null = null;
 
 export function supabaseAdmin(): SupabaseClient {

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/ia/supabase-provisional";
 import { descargarCv } from "@/lib/ia/servicio";
 
 // Visor de CV: sirve el PDF desde Storage (bucket privado) al iframe del visor.

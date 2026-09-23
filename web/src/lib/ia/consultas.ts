@@ -1,5 +1,5 @@
 import "server-only";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/ia/supabase-provisional";
 import type { CumpleNoNegociable, EstadoNoNegociable, Ficha } from "./schemas";
 
 // Lecturas para la lista y la comparativa (vistas HM/AT).
