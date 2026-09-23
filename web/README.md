@@ -49,3 +49,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Login de demo
+
+El seed de datos y Supabase Auth usan el mismo UUID para cada fila de `usuarios`. Si la base
+hosted se cargó sin `auth.users`, sincronízalos desde `web/` con las llaves de service role:
+
+```bash
+npm run seed:auth
+```
+
+El script crea o actualiza los usuarios activos del seed y confirma sus correos. La contraseña
+común es `Liverhack2026!` (puede cambiarse con `DEMO_PASSWORD`). Por ejemplo,
+`aileen.vargas@liverpool.com.mx` entra al tablero HM y
+`monica.salinas@liverpool.com.mx` al tablero HRBP.
