@@ -1,10 +1,10 @@
 import "server-only";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CumpleNoNegociable, EstadoNoNegociable, Ficha } from "./schemas";
 
-// Lecturas para la lista y la comparativa (vistas HM/AT).
-// TODO(auth): hoy lee con service_role porque aún no hay login; cuando Persona A
-// publique la sesión, cambiar a cliente con la cookie del usuario para que aplique RLS.
+// Lecturas para la lista y la comparativa (vistas HM/AT). Reciben el cliente de
+// SESIÓN (@/lib/supabase/server): RLS decide qué vacantes y candidatos ve cada
+// usuario (puede_ver_vacante / puede_ver_candidato). No usan el rol de servicio.
 
 export interface NoNegociableVista {
   id: string;
@@ -104,8 +104,8 @@ function aFila(r: Crudo): FilaCandidato {
   };
 }
 
-export async function listarCandidatos(vacanteId?: string): Promise<FilaCandidato[]> {
-  let q = createAdminClient().from("candidato_vacante").select(SELECT);
+export async function listarCandidatos(db: SupabaseClient, vacanteId?: string): Promise<FilaCandidato[]> {
+  let q = db.from("candidato_vacante").select(SELECT);
   if (vacanteId) q = q.eq("vacante_id", vacanteId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -115,16 +115,16 @@ export async function listarCandidatos(vacanteId?: string): Promise<FilaCandidat
     .sort((a, b) => b.prioridad - a.prioridad || (b.fit_score ?? -1) - (a.fit_score ?? -1));
 }
 
-export async function obtenerCandidatos(ids: string[]): Promise<FilaCandidato[]> {
+export async function obtenerCandidatos(db: SupabaseClient, ids: string[]): Promise<FilaCandidato[]> {
   if (ids.length === 0) return [];
-  const { data, error } = await createAdminClient().from("candidato_vacante").select(SELECT).in("id", ids);
+  const { data, error } = await db.from("candidato_vacante").select(SELECT).in("id", ids);
   if (error) throw new Error(error.message);
   const filas = (data as unknown as Crudo[]).map(aFila);
   return ids.map((id) => filas.find((f) => f.id === id)).filter((f): f is FilaCandidato => Boolean(f));
 }
 
-export async function listarVacantes() {
-  const { data, error } = await createAdminClient()
+export async function listarVacantes(db: SupabaseClient) {
+  const { data, error } = await db
     .from("vacantes")
     .select("id, titulo, etapa_actual, estatus")
     .order("fecha_apertura", { ascending: false });
