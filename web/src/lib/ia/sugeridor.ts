@@ -169,24 +169,30 @@ function validarMotivos(crudo: SalidaMotivosLLM, top: { v: Vacante; semaforo: Cu
 
 // ---------------------------------------------------------------------------
 // Persistencia: unique (candidato_id, vacante_id_sugerida) de Persona A.
-// Nunca toca filas en 'aceptada' o 'descartada' (decisiones humanas):
-//  - cada sugerencia primero intenta UPDATE solo si la fila sigue en 'sugerida';
-//  - si no existía, INSERT con upsert ignoreDuplicates (si alguien la decidió
-//    mientras tanto, el conflicto la deja intacta);
-//  - al final borra las 'sugerida' viejas que ya no salieron en esta corrida.
-// motivo es solo texto: se guarda con su cita "(fuente: ficha · campo)".
+// La IA solo toca SUS filas: las identifica la marca "(fuente: ficha · campo)"
+// al final de motivo, que el sugeridor escribe siempre y el seed / una persona no.
+//  - Filas en 'aceptada' o 'descartada' (decisiones humanas): nunca se tocan.
+//  - Filas en 'sugerida' SIN marca (seed de la demo o escritas a mano): tampoco;
+//    si la IA vuelve a sugerir esa vacante, la fila existente se conserva.
+//  - Cada sugerencia: UPDATE solo si la fila es 'sugerida' y con marca; si no
+//    existe, INSERT con upsert ignoreDuplicates (el conflicto deja intacta
+//    cualquier fila protegida).
+//  - Al final borra las 'sugerida' CON marca que ya no salieron.
+// La marca se comprueba dentro del mismo UPDATE/DELETE (sin lectura previa).
 // ---------------------------------------------------------------------------
 const FUENTE = /\s*\(fuente: ficha · ([a-z_]+)\)\s*$/;
+const MARCA_IA = "%(fuente: ficha · %)"; // patrón LIKE de las filas escritas por la IA
 export const motivoConFuente = (s: Pick<Sugerencia, "motivo" | "campo_ficha">) => `${s.motivo} (fuente: ficha · ${s.campo_ficha})`;
 
 export async function guardarSugerencias(p: {
   candidatoId: string;
   sugerencias: Sugerencia[];
-}): Promise<{ persistido: boolean; insertadas: number; actualizadas: number; borradas: number }> {
+}): Promise<{ persistido: boolean; insertadas: number; actualizadas: number; protegidas: number; borradas: number }> {
   const sb = supabaseAdmin();
   const ts = new Date().toISOString();
   let insertadas = 0;
   let actualizadas = 0;
+  let protegidas = 0;
 
   for (const s of p.sugerencias) {
     const fila = { score: s.score, motivo: motivoConFuente(s), ts };
@@ -196,6 +202,7 @@ export async function guardarSugerencias(p: {
       .eq("candidato_id", p.candidatoId)
       .eq("vacante_id_sugerida", s.vacante_id_sugerida)
       .eq("estatus", "sugerida")
+      .like("motivo", MARCA_IA)
       .select("id");
     if (up.error) throw new Error(`sugerencias_vacante: ${up.error.message}`);
     if (up.data.length) {
@@ -210,17 +217,23 @@ export async function guardarSugerencias(p: {
       )
       .select("id");
     if (ins.error) throw new Error(`sugerencias_vacante: ${ins.error.message}`);
-    insertadas += ins.data.length;
+    if (ins.data.length) insertadas++;
+    else protegidas++; // ya había una fila del seed, escrita a mano o decidida
   }
 
-  let del = sb.from("sugerencias_vacante").delete().eq("candidato_id", p.candidatoId).eq("estatus", "sugerida");
+  let del = sb
+    .from("sugerencias_vacante")
+    .delete()
+    .eq("candidato_id", p.candidatoId)
+    .eq("estatus", "sugerida")
+    .like("motivo", MARCA_IA);
   if (p.sugerencias.length) {
     del = del.not("vacante_id_sugerida", "in", `(${p.sugerencias.map((s) => s.vacante_id_sugerida).join(",")})`);
   }
   const borr = await del.select("id");
   if (borr.error) throw new Error(`sugerencias_vacante: ${borr.error.message}`);
 
-  return { persistido: true, insertadas, actualizadas, borradas: borr.data.length };
+  return { persistido: true, insertadas, actualizadas, protegidas, borradas: borr.data.length };
 }
 
 export interface SugerenciaGuardada {
@@ -426,7 +439,12 @@ export async function sugerirVacantes(candidatoVacanteId: string, actor: Actor, 
       verificadas: resumenVerificadas,
       sugerencias: sugerencias.map((s) => ({ vacante_id: s.vacante_id_sugerida, score: s.score })),
       persistido,
-      filas: { insertadas: guardado.insertadas, actualizadas: guardado.actualizadas, borradas: guardado.borradas },
+      filas: {
+        insertadas: guardado.insertadas,
+        actualizadas: guardado.actualizadas,
+        protegidas: guardado.protegidas,
+        borradas: guardado.borradas,
+      },
       ...medicion,
       evaluacion_ciega: { campos_ocultados: ocultados },
     },
