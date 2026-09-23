@@ -104,7 +104,13 @@ export const CAMPOS_FICHA_ORIGEN = [
   "recomendaciones",
 ] as const;
 
-export const Bandera = z.enum(["no_negociable_parcial", "no_negociable_no_cumple", "hueco_cv", "area_oportunidad"]);
+export const Bandera = z.enum([
+  "no_negociable_parcial",
+  "no_negociable_no_cumple",
+  "confirmacion_no_negociable", // no negociable ya en "cumple": confirmación breve
+  "hueco_cv",
+  "area_oportunidad",
+]);
 
 export const OrigenPregunta = z.object({
   tipo: z.enum(["no_negociable", "ficha"]),

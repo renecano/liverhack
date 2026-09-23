@@ -24,7 +24,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
   usuario: string;
   schema: S;
   nombreSchema: string;
-  validar: (crudo: z.infer<S>) => Validacion<R>;
+  validar: (crudo: z.infer<S>) => Validacion<R> | Promise<Validacion<R>>;
   maxIntentos?: number;
 }): Promise<{ valor: R; modelo: string; intentos: number; erroresPrevios: string[] }> {
   const max = opts.maxIntentos ?? 3;
@@ -46,14 +46,20 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
     const msg = r.choices[0]?.message;
     const contenido = msg?.content ?? "";
 
-    let v: Validacion<R>;
+    let json: unknown;
+    let v: Validacion<R> | null = null;
     try {
-      const crudo = opts.schema.safeParse(JSON.parse(contenido));
-      v = crudo.success
-        ? opts.validar(crudo.data)
-        : { ok: false, errores: crudo.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
+      json = JSON.parse(contenido);
     } catch {
       v = { ok: false, errores: [msg?.refusal ? `El modelo se negó: ${msg.refusal}` : "La respuesta no es JSON"] };
+    }
+    if (!v) {
+      // Fuera del try: un error del validador (p. ej. red en embeddings) se propaga
+      // como error real, no como "respuesta inválida".
+      const crudo = opts.schema.safeParse(json);
+      v = crudo.success
+        ? await opts.validar(crudo.data)
+        : { ok: false, errores: crudo.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
     }
 
     if (v.ok) return { valor: v.valor, modelo: r.model, intentos: intento, erroresPrevios };

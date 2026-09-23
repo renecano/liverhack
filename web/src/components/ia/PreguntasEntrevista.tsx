@@ -6,6 +6,7 @@ import type { Pregunta } from "@/lib/ia/schemas";
 const BANDERA: Record<NonNullable<Pregunta["bandera"]>, { texto: string; clase: string }> = {
   no_negociable_parcial: { texto: "Valida no negociable parcial", clase: "bg-amber-100 text-amber-900" },
   no_negociable_no_cumple: { texto: "Valida no negociable no cumplido", clase: "bg-red-100 text-red-900" },
+  confirmacion_no_negociable: { texto: "Confirma no negociable", clase: "bg-green-100 text-green-900" },
   hueco_cv: { texto: "Hueco en CV", clase: "bg-stone-200 text-stone-800" },
   area_oportunidad: { texto: "Área de oportunidad", clase: "bg-[#fbeef5] text-[var(--lh-accent)]" },
 };

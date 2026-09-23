@@ -1,5 +1,6 @@
 import "server-only";
 import { anonimizar, type TextoAnonimizado } from "./anonimizar";
+import { coseno, embeber } from "./embeddings";
 import { generarValidado } from "./llm";
 import { MODELO_EXTRACCION } from "./openai";
 import {
@@ -18,9 +19,16 @@ import { supabaseAdmin } from "./supabase-provisional";
 // Entrada: ficha + semáforo de no negociables + vacante + tipo de entrevista.
 // Salida: 6-10 preguntas personalizadas, cada una con su origen trazable.
 
-export const VERSION_PROMPT_PREGUNTAS = "preguntas-v2";
+export const VERSION_PROMPT_PREGUNTAS = "preguntas-v3";
 const MIN_PREGUNTAS = 6;
 const MAX_PREGUNTAS = 10;
+// Profundidad medida en palabras de la pregunta.
+const MAX_PALABRAS_CONFIRMACION = 20;
+const MIN_PALABRAS_PROFUNDA = 15;
+// Casi-duplicados (calibrado con los sets reales de Carlos: el par duplicado
+// "liderazgo sin rol formal" dio 0.75; el par distinto más alto, 0.70).
+const SIMILITUD_MISMA_FAMILIA = 0.72; // misma familia de competencia (liderazgo_*)
+const SIMILITUD_CUALQUIERA = 0.85; // cualquier par
 
 export interface EntradaPreguntas {
   nombreCandidato: string; // solo para anonimizar; nunca llega al LLM
@@ -46,10 +54,12 @@ Reglas:
 - Evaluación ciega: la ficha viene anonimizada. No preguntes ni infieras nombre, edad, género, estado civil, familia, hijos, embarazo, religión, salud, discapacidad, nacionalidad, origen, domicilio ni afiliación política o sindical. Ninguna pregunta puede tocar esos temas, ni siquiera de forma indirecta.
 - Entre ${MIN_PREGUNTAS} y ${MAX_PREGUNTAS} preguntas, en español, neutrales y profesionales, abiertas y conductuales (pide ejemplos concretos: situación, acción, resultado).
 - Cobertura obligatoria:
-  1) Al menos una pregunta por CADA no negociable (origen.tipo = "no_negociable", origen.referencia = su id exacto), INCLUSO los que están en "cumple": ahí la pregunta confirma la evidencia con un ejemplo concreto.
-  2) Los no negociables en "parcial" o "no_cumple" requieren una pregunta que valide específicamente la brecha, con bandera "no_negociable_parcial" o "no_negociable_no_cumple" respectivamente.
-  3) Al menos una pregunta que explore las áreas de oportunidad (origen.tipo = "ficha", origen.referencia = "areas_oportunidad", bandera "area_oportunidad").
+  1) CADA no negociable lleva preguntas con origen.tipo = "no_negociable" y origen.referencia = su id exacto.
+  2) Si el no negociable está en "cumple": EXACTAMENTE UNA pregunta de confirmación breve y cerrada (sí/no o un dato puntual; máximo ${MAX_PALABRAS_CONFIRMACION} palabras; NO pidas ejemplos ni experiencias), bandera "confirmacion_no_negociable". Ej.: "¿Nos confirma que concluyó la Ingeniería en Sistemas y en qué año se tituló?"
+     Si está en "parcial" o "no_cumple": al menos una pregunta PROFUNDA y conductual (${MIN_PALABRAS_PROFUNDA}+ palabras) que valide la brecha, con bandera "no_negociable_parcial" o "no_negociable_no_cumple".
+  3) Al menos una pregunta PROFUNDA (${MIN_PALABRAS_PROFUNDA}+ palabras) que explore las áreas de oportunidad (origen.tipo = "ficha", origen.referencia = "areas_oportunidad", bandera "area_oportunidad").
   4) Profundiza huecos del CV (datos sin evidencia) con bandera "hueco_cv".
+  5) Sin preguntas repetidas: no hagas dos preguntas sobre el mismo tema con distinto enunciado (ej. dos sobre "influir sin rol formal de liderazgo"). Cada pregunta debe aportar información nueva.
 - origen.referencia para tipo "ficha" debe ser uno de: ${CAMPOS_FICHA_ORIGEN.join(", ")}.
 - bandera es null cuando la pregunta no valida una brecha.
 - "objetivo": qué debe observar el entrevistador (1 frase). "competencia": en snake_case (ej. liderazgo, comunicacion, gestion_proyectos).
@@ -106,7 +116,27 @@ ${e.noNegociables.map((n) => `- ${n.id}`).join("\n")}`;
   return { texto, ocultados };
 }
 
-function validar(crudo: SalidaPreguntasLLM, e: EntradaPreguntas) {
+const palabras = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+const familia = (competencia: string) => competencia.trim().toLowerCase().split(/[_\s]+/)[0];
+
+// Pares casi duplicados: misma familia de competencia + enunciado muy parecido,
+// o cualquier par casi idéntico. Índices base 1.
+async function casiDuplicados(ps: { pregunta: string; competencia: string }[]) {
+  const e = await embeber(ps.map((p) => p.pregunta));
+  const pares: { i: number; j: number; sim: number }[] = [];
+  for (let i = 0; i < ps.length; i++) {
+    for (let j = i + 1; j < ps.length; j++) {
+      const sim = coseno(e[i], e[j]);
+      const mismaFamilia = familia(ps[i].competencia) === familia(ps[j].competencia);
+      if (sim >= SIMILITUD_CUALQUIERA || (mismaFamilia && sim >= SIMILITUD_MISMA_FAMILIA)) {
+        pares.push({ i: i + 1, j: j + 1, sim });
+      }
+    }
+  }
+  return pares;
+}
+
+async function validar(crudo: SalidaPreguntasLLM, e: EntradaPreguntas) {
   const errores: string[] = [];
   const ps = crudo.preguntas;
   const idsNN = new Set(e.noNegociables.map((n) => n.id));
@@ -132,19 +162,48 @@ function validar(crudo: SalidaPreguntasLLM, e: EntradaPreguntas) {
     }
   });
 
-  // Cobertura: cada no negociable validado; las brechas con su bandera.
+  // Cobertura y profundidad por no negociable.
   for (const nn of e.noNegociables) {
     const suyas = ps.filter((p) => p.origen.tipo === "no_negociable" && p.origen.referencia === nn.id);
     if (!suyas.length) errores.push(`Falta una pregunta para el no negociable ${nn.id} (${nn.texto})`);
     const estado = e.cumple.find((c) => c.no_negociable_id === nn.id)?.estado;
-    const bandera =
-      estado === "parcial" ? "no_negociable_parcial" : estado === "no_cumple" ? "no_negociable_no_cumple" : null;
-    if (bandera && !suyas.some((p) => p.bandera === bandera)) {
-      errores.push(`El no negociable ${nn.id} está en "${estado}": falta una pregunta con bandera "${bandera}"`);
+    if (estado === "cumple") {
+      if (suyas.length > 1) {
+        errores.push(`El no negociable ${nn.id} ya "cumple": usa UNA sola pregunta de confirmación, no ${suyas.length}`);
+      }
+      for (const p of suyas) {
+        if (p.bandera !== "confirmacion_no_negociable") {
+          errores.push(`La pregunta del no negociable ${nn.id} (en "cumple") debe llevar bandera "confirmacion_no_negociable"`);
+        }
+        if (palabras(p.pregunta) > MAX_PALABRAS_CONFIRMACION) {
+          errores.push(
+            `La confirmación del no negociable ${nn.id} tiene ${palabras(p.pregunta)} palabras; máximo ${MAX_PALABRAS_CONFIRMACION}`,
+          );
+        }
+      }
+    } else if (estado === "parcial" || estado === "no_cumple") {
+      const bandera = estado === "parcial" ? "no_negociable_parcial" : "no_negociable_no_cumple";
+      if (!suyas.some((p) => p.bandera === bandera && palabras(p.pregunta) >= MIN_PALABRAS_PROFUNDA)) {
+        errores.push(
+          `El no negociable ${nn.id} está en "${estado}": falta una pregunta profunda (${MIN_PALABRAS_PROFUNDA}+ palabras) con bandera "${bandera}"`,
+        );
+      }
     }
   }
-  if (e.ficha.areas_oportunidad?.length && !ps.some((p) => p.origen.referencia === "areas_oportunidad")) {
-    errores.push('Falta al menos una pregunta con origen "areas_oportunidad"');
+  if (e.ficha.areas_oportunidad?.length) {
+    const areas = ps.filter((p) => p.origen.referencia === "areas_oportunidad");
+    if (!areas.some((p) => palabras(p.pregunta) >= MIN_PALABRAS_PROFUNDA)) {
+      errores.push(`Falta al menos una pregunta profunda (${MIN_PALABRAS_PROFUNDA}+ palabras) con origen "areas_oportunidad"`);
+    }
+  }
+
+  // Casi-duplicados: solo si lo demás ya es válido (no gastar embeddings en un set que se rehará).
+  if (!errores.length) {
+    for (const d of await casiDuplicados(ps)) {
+      errores.push(
+        `Las preguntas ${d.i} y ${d.j} son casi duplicadas (similitud ${d.sim.toFixed(2)}): reemplaza una por otra que explore un tema distinto`,
+      );
+    }
   }
 
   if (errores.length) return { ok: false as const, errores };
