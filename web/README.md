@@ -20,6 +20,21 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Verificar el dominio Proceso (orquestador + SLA, sin UI)
+
+Requiere `web/.env.local` con `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`.
+
+```bash
+cd web
+npm run verify:proceso               # corre contra la base hosted y limpia la vacante de prueba
+npm run verify:proceso -- --conservar   # deja la vacante "[VERIFY] ..." para inspeccionarla
+```
+
+Imprime el resumen de las vacantes del seed (semáforo, días restantes, cobertura, quién
+bloquea), prueba el candado, recorre una vacante de prueba por las 6 etapas y sus compuertas
+`ESPERANDO_HM_*`, registra decisiones con justificación, corre `detectarAtrasos()` y muestra
+`audit_log` y las notificaciones en borrador generadas. Detalle en `scripts/verify-proceso.ts`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
@@ -34,3 +49,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Login de demo
+
+El seed de datos y Supabase Auth usan el mismo UUID para cada fila de `usuarios`. Si la base
+hosted se cargó sin `auth.users`, sincronízalos desde `web/` con las llaves de service role:
+
+```bash
+npm run seed:auth
+```
+
+El script crea o actualiza los usuarios activos del seed y confirma sus correos. La contraseña
+común es `Liverhack2026!` (puede cambiarse con `DEMO_PASSWORD`). Por ejemplo,
+`aileen.vargas@liverpool.com.mx` entra al tablero HM y
+`monica.salinas@liverpool.com.mx` al tablero HRBP.

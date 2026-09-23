@@ -22,10 +22,15 @@ vacantes(
   hm_id -> usuarios, hrbp_id -> usuarios, at_id -> usuarios,
   estatus[abierta|en_proceso|cubierta|cancelada],
   etapa_actual[requisicion|alineacion|busqueda|atraccion|seleccion|oferta],
+  estado_proceso[REQUISICION_EN_CURSO|ESPERANDO_HM_VALIDA_NNN|ALINEACION_EN_CURSO|
+                 ESPERANDO_HM_SELECCIONA_PERFILES|BUSQUEDA_EN_CURSO|ATRACCION_EN_CURSO|
+                 ESPERANDO_HM_DEFINE_POOL|SELECCION_EN_CURSO|ESPERANDO_HM_DECIDE_FINALISTA|
+                 OFERTA_EN_CURSO|CUBIERTA|CANCELADA],   -- sub-paso del orquestador; lo escribe SOLO el orquestador
   fecha_apertura, fecha_estimada_cobertura,
   alineacion_ok bool, alineacion_notas text,   -- del agente de alineación
   fuente_referidos bool
 )
+`estado_proceso` (migración `20260923204457`) es la fuente de verdad del estado del orquestador. Un CHECK lo mantiene coherente con `etapa_actual` y `estatus` (p. ej. `ESPERANDO_HM_DEFINE_POOL` ⇒ `atraccion`; `CANCELADA` ⇔ `estatus = cancelada`). Si un insert no lo trae, un trigger pone el `*_EN_CURSO` de su `etapa_actual`.
 no_negociables(id, vacante_id -> vacantes, texto, tipo[estudios|habilidad_tecnica|competencia])
 ```
 
@@ -75,7 +80,11 @@ El sla-engine calcula `fecha_limite` en días hábiles según `sla_config` y el 
 ```
 entrevistas(id, vacante_id, candidato_id, fecha, tipo[competencias|panel], calendar_event_id, estatus)
 entrevista_participantes(entrevista_id, entrevistador_id -> usuarios)
-preguntas_entrevista(id, vacante_id, candidato_id, preguntas jsonb, generado_por[ia|manual], ts)
+preguntas_entrevista(id, vacante_id, candidato_id, preguntas jsonb, generado_por[ia|manual],
+                     tipo[competencias|panel] default competencias,  -- sesión a la que pertenecen
+                     origen text,                                     -- qué las motivó (CV/nnn/evaluación), para IA
+                     ts,
+                     UNIQUE(vacante_id, candidato_id, tipo))          -- un juego de preguntas por tipo de sesión
 feedback_entrevista(
   id, entrevista_id, entrevistador_id, candidato_id,
   scores jsonb,                  -- {competencia: 0-100}
@@ -102,13 +111,17 @@ notificaciones(
   canal[correo|portal], contenido text,
   estatus[borrador|aprobada|enviada], aprobada_por -> usuarios, ts
 )
+-- Índice único parcial `notificaciones_un_borrador` (destinatario_tipo, destinatario_id,
+-- vacante_id, tipo) WHERE estatus = 'borrador': no se duplica un borrador idéntico mientras
+-- siga pendiente (cero ghosting sin spam). vacante_id NULL = distinto (NULLS DISTINCT).
 ```
 
 ## Sugerencia de vacantes (reubicación de no seleccionados)
 ```
 sugerencias_vacante(
   id, candidato_id, vacante_id_sugerida -> vacantes,
-  score int, motivo text, estatus[sugerida|aceptada|descartada], ts
+  score int, motivo text, estatus[sugerida|aceptada|descartada], ts,
+  UNIQUE(candidato_id, vacante_id_sugerida)   -- una sugerencia por candidato y vacante sugerida
 )
 ```
 

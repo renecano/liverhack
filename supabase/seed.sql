@@ -440,7 +440,7 @@ insert into vacante_etapas (vacante_id, etapa, dueno_id, fecha_inicio, fecha_lim
 ('33333333-3333-3333-3333-000000000003','requisicion','11111111-1111-1111-1111-111111111103', current_date-21, current_date-20, current_date-20, 'completada'),
 ('33333333-3333-3333-3333-000000000003','alineacion', '11111111-1111-1111-1111-111111111102', current_date-20, current_date-19, current_date-19, 'completada'),
 ('33333333-3333-3333-3333-000000000003','busqueda',   '11111111-1111-1111-1111-111111111102', current_date-19, current_date-10, current_date-11, 'completada'),
-('33333333-3333-3333-3333-000000000003','atraccion',  '11111111-1111-1111-1111-111111111102', current_date-11, current_date+2,  null,            'en_riesgo'),
+('33333333-3333-3333-3333-000000000003','atraccion',  '11111111-1111-1111-1111-111111111102', current_date-11, current_date+1,  null,            'en_riesgo'),
 
 -- V4
 ('33333333-3333-3333-3333-000000000004','requisicion','11111111-1111-1111-1111-111111111103', current_date-16, current_date-14, current_date-14, 'completada'),
