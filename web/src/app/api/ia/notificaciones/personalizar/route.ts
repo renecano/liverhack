@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { SalidaInvalidaError } from "@/lib/ia/llm";
 import { personalizarBorrador, personalizarSimulado, type ErrorPersonalizar } from "@/lib/ia/notificaciones";
 import { esPrueba } from "@/lib/ia/prueba";
 
@@ -27,6 +26,9 @@ const Cuerpo = z
 
 const HTTP: Record<ErrorPersonalizar, [number, string]> = {
   no_encontrada: [404, "Notificación no encontrada"],
+  salida_invalida: [422, "La IA no produjo un mensaje válido; no se modificó nada."],
+  timeout: [504, "La IA tardó demasiado; no se modificó nada."],
+  interno: [500, "Error interno al personalizar"],
   no_es_candidato: [422, "Solo se personalizan avisos a candidatos"],
   tipo_no_soportado: [422, "Solo se personalizan avisos de cambio_etapa o resultado"],
   sin_vacante: [422, "El aviso no está ligado a una vacante"],
@@ -44,14 +46,14 @@ export async function POST(req: Request) {
   // TODO(auth): tomar el actor de la sesión cuando se integre el login de Persona A.
   const actor = { id: null, rol: null };
 
+  // personalizarBorrador / personalizarSimulado nunca lanzan: toda falla llega como { ok: false }.
   const ejecutar = async (fn: () => ReturnType<typeof personalizarBorrador>, clave: string | null) => {
-    try {
-      const r = await fn();
-      if (!r.ok) {
-        const [status, error] = HTTP[r.error];
-        return { id: clave, ok: false, status, error };
-      }
-      return {
+    const r = await fn();
+    if (!r.ok) {
+      const [status, error] = HTTP[r.error];
+      return { id: clave, ok: false, status, error, codigo: r.error, detalle: r.detalle };
+    }
+    return {
         id: clave,
         ok: true,
         status: 200,
@@ -61,13 +63,7 @@ export async function POST(req: Request) {
         intentos: r.resultado.intentos,
         fortalezas: r.resultado.fortalezas,
         mensaje: r.resultado.mensaje,
-      };
-    } catch (err) {
-      if (err instanceof SalidaInvalidaError) {
-        return { id: clave, ok: false, status: 422, error: "La IA no produjo un mensaje válido; no se modificó nada.", detalles: err.errores };
-      }
-      return { id: clave, ok: false, status: 500, error: err instanceof Error ? err.message : String(err) };
-    }
+    };
   };
 
   if (simulado) {

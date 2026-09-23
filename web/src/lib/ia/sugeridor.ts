@@ -13,7 +13,8 @@ import {
 } from "./schemas";
 import { clasificarNoNegociable } from "./obtenible";
 import { crearVerificadorCitas, normalizar, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
-import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
+import { conLimite, clasificarError, detalleSeguro, type ErrorGenerico, type Ejecucion } from "./seguro";
+import { registrarAuditSeguro, type Actor, type OpcionesAudit } from "./servicio";
 import { supabaseAdmin } from "./supabase-provisional";
 import { temasProhibidos } from "./temas-prohibidos";
 
@@ -287,30 +288,126 @@ export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// API para el orquestador de Persona A (evento "reemparejar"): por candidato.
-// Toma su proceso no seleccionado (descartado/pool) en vacanteOrigenId o, si no
-// se indica, el más reciente. Solo sugiere y guarda; no mueve ni notifica.
+// API pública: NUNCA lanza (contrato con el orquestador de Persona A).
+// Toda falla vuelve como { ok: false, error, detalle? } y deja registro en audit_log.
 // ---------------------------------------------------------------------------
-export async function sugerirVacantes(
-  candidatoId: string,
-  opciones: { vacanteOrigenId?: string; actor?: Actor; prueba?: boolean } = {},
-) {
-  let q = supabaseAdmin()
-    .from("candidato_vacante")
-    .select("id")
-    .eq("candidato_id", candidatoId)
-    .in("estatus", [...ESTATUS_NO_SELECCIONADO])
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  if (opciones.vacanteOrigenId) q = q.eq("vacante_id", opciones.vacanteOrigenId);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  if (!data?.length) return { error: "sin_proceso_no_seleccionado" as const };
-  return sugerirVacantesDeProceso(data[0].id, opciones.actor ?? { id: null, rol: null }, { prueba: opciones.prueba });
+export const LIMITE_SUGERIR_MS = 20_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type ErrorSugerir =
+  | "sin_proceso_no_seleccionado"
+  | "seleccionado"
+  | "sin_ficha"
+  | "no_encontrado"
+  | ErrorGenerico; // "salida_invalida" | "timeout" | "interno"
+
+export interface SugerenciasOk {
+  ok: true;
+  sugerencias: Sugerencia[];
+  persistido: boolean;
+  consideradas: number;
+  filtros: Record<string, number>;
+  verificadas: { vacante_id: string; score: number; semaforo: string[]; decision: string; reglas_no_cumple: string[] }[];
+  tiempos_ms: { embeddings: number; verificacion: number; motivos: number; total: number };
+  tokens: { embeddings: number; verificacion: UsoTokens; motivos: UsoTokens };
+  costo_usd_estimado: { embeddings: number; verificacion: number; motivos: number; total: number };
+}
+export type ResultadoSugerir = SugerenciasOk | { ok: false; error: ErrorSugerir; detalle?: string };
+
+export interface OpcionesSugerir {
+  /** Proceso del que salió el candidato; si falta, se toma su proceso no seleccionado más reciente. */
+  vacanteOrigenId?: string;
+  actor?: Actor;
+  /** Marca la entrada de audit_log como prueba. */
+  prueba?: boolean;
+  /** Tiempo límite en ms (por defecto 20 000). */
+  limiteMs?: number;
 }
 
-// Por candidato_vacante (lo usa la API de la lista de candidatos).
-export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor: Actor, opciones: OpcionesAudit = {}) {
+async function ejecutarSugerir(
+  opciones: OpcionesSugerir,
+  entidad: { tipo: "candidatos" | "candidato_vacante"; id: string },
+  fn: (e: Ejecucion, actor: Actor) => Promise<ResultadoSugerir>,
+): Promise<ResultadoSugerir> {
+  const t0 = Date.now();
+  const actor = opciones.actor ?? { id: null, rol: null };
+  const limite = opciones.limiteMs ?? LIMITE_SUGERIR_MS;
+  let r: ResultadoSugerir;
+  try {
+    if (!UUID.test(entidad.id)) {
+      r = { ok: false, error: "no_encontrado", detalle: "id con formato inválido" };
+    } else {
+      const x = await conLimite(limite, (e) => fn(e, actor));
+      r = "timeout" in x ? { ok: false, error: "timeout", detalle: `Sin respuesta en ${limite} ms` } : x;
+    }
+  } catch (err) {
+    r = { ok: false, error: clasificarError(err), detalle: detalleSeguro(err) };
+  }
+  if (!r.ok) {
+    await registrarAuditSeguro({
+      actor,
+      accion: "ia_sugerir_vacantes",
+      entidad: entidad.tipo,
+      entidad_id: UUID.test(entidad.id) ? entidad.id : null,
+      prueba: opciones.prueba,
+      detalle: {
+        agente: "sugeridor_vacantes",
+        prompt: VERSION_PROMPT_SUGERENCIAS,
+        ok: false,
+        error: r.error,
+        detalle: r.detalle ?? null,
+        duracion_ms: Date.now() - t0,
+        persistido: false,
+      },
+    });
+  }
+  return r;
+}
+
+/**
+ * Sugiere hasta 3 vacantes abiertas a un candidato no seleccionado (agente 6).
+ * Para el evento "reemparejar" del orquestador.
+ *
+ * - **Nunca lanza**: toda falla vuelve como `{ ok: false, error }` y queda en audit_log.
+ * - Tarda ~6-9 s (embeddings + verificación de no negociables + motivos); límite 20 s.
+ * - Es seguro llamarla sin `await` (la promesa nunca se rechaza). En serverless,
+ *   úsala dentro de `after()` de `next/server` para que termine tras responder.
+ * - Solo sugiere y guarda en sugerencias_vacante; no mueve al candidato ni envía nada.
+ */
+export async function sugerirVacantes(candidatoId: string, opciones: OpcionesSugerir = {}): Promise<ResultadoSugerir> {
+  return ejecutarSugerir(opciones, { tipo: "candidatos", id: candidatoId }, async (e, actor) => {
+    let q = supabaseAdmin()
+      .from("candidato_vacante")
+      .select("id")
+      .eq("candidato_id", candidatoId)
+      .in("estatus", [...ESTATUS_NO_SELECCIONADO])
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (opciones.vacanteOrigenId) q = q.eq("vacante_id", opciones.vacanteOrigenId);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    if (!data?.length) return { ok: false, error: "sin_proceso_no_seleccionado" };
+    return nucleoSugerir(data[0].id, actor, opciones, e);
+  });
+}
+
+/** Igual que sugerirVacantes, pero por candidato_vacante (lo usa la lista de candidatos). Nunca lanza. */
+export async function sugerirVacantesDeProceso(
+  candidatoVacanteId: string,
+  opciones: OpcionesSugerir = {},
+): Promise<ResultadoSugerir> {
+  return ejecutarSugerir(opciones, { tipo: "candidato_vacante", id: candidatoVacanteId }, (e, actor) =>
+    nucleoSugerir(candidatoVacanteId, actor, opciones, e),
+  );
+}
+
+// Núcleo (puede lanzar; lo protege ejecutarSugerir).
+async function nucleoSugerir(
+  candidatoVacanteId: string,
+  actor: Actor,
+  opciones: OpcionesAudit,
+  ej: Ejecucion,
+): Promise<ResultadoSugerir> {
   const t0 = Date.now();
   const sb = supabaseAdmin();
   const cv = await sb
@@ -319,12 +416,12 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
     .eq("id", candidatoVacanteId)
     .maybeSingle();
   if (cv.error) throw new Error(cv.error.message);
-  if (!cv.data) return { error: "no_encontrado" as const };
+  if (!cv.data) return { ok: false, error: "no_encontrado" };
   if (!(ESTATUS_NO_SELECCIONADO as readonly string[]).includes(cv.data.estatus)) {
-    return { error: "seleccionado" as const };
+    return { ok: false, error: "seleccionado" };
   }
   const ficha = (cv.data.ficha ?? {}) as Partial<Ficha>;
-  if (!ficha.descripcion) return { error: "sin_ficha" as const };
+  if (!ficha.descripcion) return { ok: false, error: "sin_ficha" };
   const candidato = cv.data.candidatos as unknown as { nombre: string; escolaridad: string | null };
   const candidatoId = cv.data.candidato_id as string;
 
@@ -369,7 +466,7 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
 
   // 1) Ranking por embeddings: una sola llamada (perfil + cada vacante).
   const tEmb = Date.now();
-  const emb = await embeber([lineas.map((l) => l.texto).join("\n"), ...candidatas.map(textoVacante)]);
+  const emb = await embeber([lineas.map((l) => l.texto).join("\n"), ...candidatas.map(textoVacante)], ej.signal);
   const msEmb = Date.now() - tEmb;
   const ranking = candidatas
     .map((v, i) => ({ v, sim: coseno(emb.vectores[0], emb.vectores[i + 1]) }))
@@ -389,6 +486,7 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
       usuario: `PERFIL DEL CANDIDATO (anonimizado; fuente "Perfil"):\n${perfil}\n\nVACANTES:\n${aVerificar.map(({ v }) => bloqueVacante(v, true)).join("\n\n")}`,
       schema: SalidaVerificacionLLM,
       nombreSchema: "verificacion_no_negociables",
+      signal: ej.signal,
       validar: (crudo) => validarVerificacion(crudo, aVerificar, citaExiste),
     });
     verificacion = { semaforos: r.valor, modelo: r.modelo, intentos: r.intentos, erroresPrevios: r.erroresPrevios, uso: r.uso };
@@ -441,6 +539,7 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
       usuario: `PERFIL DEL CANDIDATO (anonimizado, por campo):\n${perfil}\n\nVACANTES SUGERIDAS:\n${vacantes}`,
       schema: SalidaMotivosLLM,
       nombreSchema: "motivos_sugerencias",
+      signal: ej.signal,
       validar: (crudo) => validarMotivos(crudo, top),
     });
     motivosLLM = { modelo: r.modelo, intentos: r.intentos, erroresPrevios: r.erroresPrevios, uso: r.uso };
@@ -458,7 +557,8 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
   }
   const msMot = Date.now() - tMot;
 
-  const guardado = await guardarSugerencias({ candidatoId, sugerencias });
+  // Punto de no retorno: desde aquí el tiempo límite ya no corta (ver lib/ia/seguro.ts).
+  const guardado = await ej.escribir(() => guardarSugerencias({ candidatoId, sugerencias }));
   const { persistido } = guardado;
 
   const tokens = {
@@ -484,7 +584,7 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
     reglas_no_cumple: x.clases.map((c) => c.regla),
   }));
 
-  await registrarAudit({
+  await registrarAuditSeguro({
     actor,
     accion: "ia_sugerir_vacantes",
     entidad: "candidato_vacante",
@@ -493,6 +593,7 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
     detalle: {
       agente: "sugeridor_vacantes",
       prompt: VERSION_PROMPT_SUGERENCIAS,
+      ok: true,
       modelo: motivosLLM?.modelo ?? verificacion?.modelo ?? null,
       modelo_embeddings: MODELO_EMBEDDINGS,
       intentos: { verificacion: verificacion?.intentos ?? 0, motivos: motivosLLM?.intentos ?? 0 },
@@ -515,5 +616,5 @@ export async function sugerirVacantesDeProceso(candidatoVacanteId: string, actor
     },
   });
 
-  return { sugerencias, persistido, consideradas: candidatas.length, filtros, verificadas: resumenVerificadas, ...medicion };
+  return { ok: true, sugerencias, persistido, consideradas: candidatas.length, filtros, verificadas: resumenVerificadas, ...medicion };
 }

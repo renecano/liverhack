@@ -4,7 +4,8 @@ import { generarValidado } from "./llm";
 import { MODELO_EXTRACCION } from "./openai";
 import { SalidaMensajeLLM, type Ficha } from "./schemas";
 import { normalizar } from "./semaforo";
-import { registrarAudit, type Actor } from "./servicio";
+import { conLimite, clasificarError, detalleSeguro, type ErrorGenerico, type Ejecucion } from "./seguro";
+import { registrarAuditSeguro, type Actor } from "./servicio";
 import { supabaseAdmin } from "./supabase-provisional";
 import { temasProhibidos } from "./temas-prohibidos";
 
@@ -208,8 +209,8 @@ export interface ResultadoRedaccion {
   erroresPrevios: string[];
 }
 
-// Redacta sin escribir en notificaciones (lo usan personalizarBorrador y el dry-run).
-export async function redactarMensaje(b: BorradorEntrada): Promise<ResultadoRedaccion | { error: "sin_contexto" }> {
+// Redacta sin escribir en notificaciones (núcleo; puede lanzar, lo protegen las envolturas).
+async function redactarMensaje(b: BorradorEntrada, signal?: AbortSignal): Promise<ResultadoRedaccion | { error: "sin_contexto" }> {
   const c = await cargarContexto(b.candidatoId, b.vacanteId, tonoPara(b.tipo));
   if (!c) return { error: "sin_contexto" };
   const r = await generarValidado({
@@ -219,6 +220,7 @@ export async function redactarMensaje(b: BorradorEntrada): Promise<ResultadoReda
     schema: SalidaMensajeLLM,
     nombreSchema: "mensaje_candidato",
     temperatura: TEMPERATURA_MENSAJE,
+    signal,
     validar: (crudo) => validarMensaje(crudo, c),
   });
   // El nombre solo entra aquí, en código, después de validar.
@@ -234,78 +236,148 @@ export async function redactarMensaje(b: BorradorEntrada): Promise<ResultadoReda
   };
 }
 
+// ---------------------------------------------------------------------------
+// API pública: NUNCA lanza (contrato con el orquestador / pantalla de aprobación
+// de Persona A). Toda falla vuelve como { ok: false, error, detalle? } y deja
+// registro en audit_log.
+// ---------------------------------------------------------------------------
+export const LIMITE_PERSONALIZAR_MS = 30_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type ErrorPersonalizar =
   | "no_encontrada"
   | "no_es_candidato"
   | "tipo_no_soportado"
   | "sin_vacante"
   | "no_es_borrador"
-  | "sin_contexto";
+  | "sin_contexto"
+  | ErrorGenerico; // "salida_invalida" | "timeout" | "interno"
+
+export type ResultadoPersonalizar =
+  | { ok: true; resultado: ResultadoRedaccion; actualizado: boolean }
+  | { ok: false; error: ErrorPersonalizar; detalle?: string };
 
 export interface OpcionesPersonalizar {
-  dryRun?: boolean; // genera y valida, pero NO actualiza la fila
+  /** Genera y valida el texto, pero NO actualiza la fila. */
+  dryRun?: boolean;
+  /** Marca la entrada de audit_log como prueba. */
   prueba?: boolean;
   actor?: Actor;
+  /** Tiempo límite en ms (por defecto 30 000). */
+  limiteMs?: number;
 }
 
-// Reescribe el contenido de un borrador existente (Persona A lo crea).
+async function ejecutarPersonalizar(
+  opciones: OpcionesPersonalizar,
+  notificacionId: string | null,
+  simulado: boolean,
+  fn: (e: Ejecucion) => Promise<ResultadoPersonalizar>,
+): Promise<ResultadoPersonalizar> {
+  const t0 = Date.now();
+  const limite = opciones.limiteMs ?? LIMITE_PERSONALIZAR_MS;
+  let r: ResultadoPersonalizar;
+  try {
+    if (notificacionId !== null && !UUID.test(notificacionId)) {
+      r = { ok: false, error: "no_encontrada", detalle: "id con formato inválido" };
+    } else {
+      const x = await conLimite(limite, fn);
+      r = "timeout" in x ? { ok: false, error: "timeout", detalle: `Sin respuesta en ${limite} ms` } : x;
+    }
+  } catch (err) {
+    r = { ok: false, error: clasificarError(err), detalle: detalleSeguro(err) };
+  }
+  if (!r.ok) {
+    await registrarAuditSeguro({
+      actor: opciones.actor ?? { id: null, rol: null },
+      accion: "ia_redactar_notificacion",
+      entidad: "notificaciones",
+      entidad_id: notificacionId && UUID.test(notificacionId) ? notificacionId : null,
+      prueba: opciones.prueba,
+      detalle: {
+        agente: "feedback_personalizado",
+        prompt: VERSION_PROMPT_MENSAJE,
+        ok: false,
+        error: r.error,
+        detalle: r.detalle ?? null,
+        notificacion_id: notificacionId,
+        dry_run: Boolean(opciones.dryRun),
+        simulado,
+        actualizado: false,
+        duracion_ms: Date.now() - t0,
+      },
+    });
+  }
+  return r;
+}
+
+/**
+ * Reescribe con IA el `contenido` de un borrador de notificación que ya creó el
+ * orquestador (agente 5). No crea notificaciones.
+ *
+ * - **Nunca lanza**: toda falla vuelve como `{ ok: false, error }` y queda en audit_log.
+ * - Tarda ~4-8 s; límite 30 s. Es seguro llamarla sin `await`.
+ * - Solo modifica la fila si sigue en 'borrador' (condición en el mismo UPDATE);
+ *   si el AT ya la aprobó o envió, devuelve `{ ok: false, error: "no_es_borrador" }`.
+ */
 export async function personalizarBorrador(
   notificacionId: string,
   opciones: OpcionesPersonalizar = {},
-): Promise<{ ok: true; resultado: ResultadoRedaccion; actualizado: boolean } | { ok: false; error: ErrorPersonalizar }> {
-  const sb = supabaseAdmin();
-  const n = await sb
-    .from("notificaciones")
-    .select("id, destinatario_tipo, destinatario_id, vacante_id, tipo, estatus, contenido")
-    .eq("id", notificacionId)
-    .maybeSingle();
-  if (n.error) throw new Error(n.error.message);
-  if (!n.data) return { ok: false, error: "no_encontrada" };
-  if (n.data.destinatario_tipo !== "candidato") return { ok: false, error: "no_es_candidato" };
-  if (n.data.tipo !== "cambio_etapa" && n.data.tipo !== "resultado") return { ok: false, error: "tipo_no_soportado" };
-  if (!n.data.vacante_id) return { ok: false, error: "sin_vacante" };
-  if (n.data.estatus !== "borrador") return { ok: false, error: "no_es_borrador" };
-
-  const r = await redactarMensaje({
-    candidatoId: n.data.destinatario_id,
-    vacanteId: n.data.vacante_id,
-    tipo: n.data.tipo,
-    contenidoBase: n.data.contenido ?? "",
-  });
-  if ("error" in r) return { ok: false, error: r.error };
-
-  let actualizado = false;
-  if (!opciones.dryRun) {
-    // La condición de estatus va en el MISMO update: si el AT aprobó el lote
-    // mientras se redactaba, no se actualiza nada y se responde 409.
-    const up = await sb
+): Promise<ResultadoPersonalizar> {
+  return ejecutarPersonalizar(opciones, notificacionId, false, async (ej) => {
+    const sb = supabaseAdmin();
+    const n = await sb
       .from("notificaciones")
-      .update({ contenido: r.mensaje })
+      .select("id, destinatario_tipo, destinatario_id, vacante_id, tipo, estatus, contenido")
       .eq("id", notificacionId)
-      .eq("estatus", "borrador")
-      .select("id");
-    if (up.error) throw new Error(up.error.message);
-    if (!up.data.length) return { ok: false, error: "no_es_borrador" };
-    actualizado = true;
-  }
+      .maybeSingle();
+    if (n.error) throw new Error(n.error.message);
+    if (!n.data) return { ok: false, error: "no_encontrada" };
+    if (n.data.destinatario_tipo !== "candidato") return { ok: false, error: "no_es_candidato" };
+    if (n.data.tipo !== "cambio_etapa" && n.data.tipo !== "resultado") return { ok: false, error: "tipo_no_soportado" };
+    if (!n.data.vacante_id) return { ok: false, error: "sin_vacante" };
+    if (n.data.estatus !== "borrador") return { ok: false, error: "no_es_borrador" };
 
-  await auditarRedaccion(r, { notificacionId, dryRun: Boolean(opciones.dryRun), actualizado, prueba: opciones.prueba, actor: opciones.actor });
-  return { ok: true, resultado: r, actualizado };
+    const r = await redactarMensaje(
+      { candidatoId: n.data.destinatario_id, vacanteId: n.data.vacante_id, tipo: n.data.tipo, contenidoBase: n.data.contenido ?? "" },
+      ej.signal,
+    );
+    if ("error" in r) return { ok: false, error: r.error };
+
+    let actualizado = false;
+    if (!opciones.dryRun) {
+      // Punto de no retorno. La condición de estatus va en el MISMO update: si el
+      // AT aprobó el lote mientras se redactaba, no se actualiza nada.
+      const up = await ej.escribir(() =>
+        sb.from("notificaciones").update({ contenido: r.mensaje }).eq("id", notificacionId).eq("estatus", "borrador").select("id"),
+      );
+      if (up.error) throw new Error(up.error.message);
+      if (!up.data.length) return { ok: false, error: "no_es_borrador" };
+      actualizado = true;
+    }
+
+    await auditarRedaccion(r, { notificacionId, dryRun: Boolean(opciones.dryRun), actualizado, prueba: opciones.prueba, actor: opciones.actor });
+    return { ok: true, resultado: r, actualizado };
+  });
 }
 
-// Dry-run sin fila: construye el borrador en memoria (pruebas y demo). Nunca escribe en notificaciones.
-export async function personalizarSimulado(b: BorradorEntrada, opciones: { prueba?: boolean; actor?: Actor } = {}) {
-  const r = await redactarMensaje(b);
-  if ("error" in r) return { ok: false as const, error: r.error };
-  await auditarRedaccion(r, { notificacionId: null, dryRun: true, actualizado: false, simulado: true, ...opciones });
-  return { ok: true as const, resultado: r, actualizado: false };
+/** Dry-run sin fila: borrador construido en memoria (pruebas y demo). Nunca escribe en notificaciones ni lanza. */
+export async function personalizarSimulado(
+  b: BorradorEntrada,
+  opciones: Omit<OpcionesPersonalizar, "dryRun"> = {},
+): Promise<ResultadoPersonalizar> {
+  return ejecutarPersonalizar({ ...opciones, dryRun: true }, null, true, async (ej) => {
+    const r = await redactarMensaje(b, ej.signal);
+    if ("error" in r) return { ok: false, error: r.error };
+    await auditarRedaccion(r, { notificacionId: null, dryRun: true, actualizado: false, simulado: true, ...opciones });
+    return { ok: true, resultado: r, actualizado: false };
+  });
 }
 
 async function auditarRedaccion(
   r: ResultadoRedaccion,
   o: { notificacionId: string | null; dryRun: boolean; actualizado: boolean; simulado?: boolean; prueba?: boolean; actor?: Actor },
 ) {
-  await registrarAudit({
+  await registrarAuditSeguro({
     actor: o.actor ?? { id: null, rol: null },
     accion: "ia_redactar_notificacion",
     entidad: "notificaciones",
@@ -314,6 +386,7 @@ async function auditarRedaccion(
     detalle: {
       agente: "feedback_personalizado",
       prompt: VERSION_PROMPT_MENSAJE,
+      ok: true,
       modelo: r.modelo,
       temperature: TEMPERATURA_MENSAJE,
       intentos: r.intentos,

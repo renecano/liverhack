@@ -1,5 +1,5 @@
 import "server-only";
-import { supabaseAdmin } from "@/lib/ia/supabase-provisional";
+import { supabaseAdmin } from "./supabase-provisional";
 import { extraerFicha, VERSION_PROMPT, type SalidaExtractor } from "./extractor";
 
 // Capa de persistencia del agente 2. Frontera con Persona A (docs/06):
@@ -32,6 +32,18 @@ export async function registrarAudit(params: {
       detalle: params.prueba ? { ...params.detalle, prueba: true } : params.detalle,
     });
   if (error) throw new Error(`audit_log: ${error.message}`);
+}
+
+// Para funciones que no deben lanzar: si el audit falla, se reporta en consola
+// y se devuelve false; la operación principal no se cae por eso.
+export async function registrarAuditSeguro(params: Parameters<typeof registrarAudit>[0]): Promise<boolean> {
+  try {
+    await registrarAudit(params);
+    return true;
+  } catch (err) {
+    console.error("[ia] no se pudo escribir audit_log:", err instanceof Error ? err.message : err);
+    return false;
+  }
 }
 
 export async function textoDePdf(pdf: Uint8Array): Promise<string> {

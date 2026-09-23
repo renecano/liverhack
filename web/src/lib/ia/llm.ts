@@ -13,6 +13,7 @@ export class SalidaInvalidaError extends Error {
     public intentos: number,
   ) {
     super(`La salida del LLM no validó tras ${intentos} intentos: ${errores.join("; ")}`);
+    this.name = "SalidaInvalidaError";
   }
 }
 
@@ -30,6 +31,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
   validar: (crudo: z.infer<S>) => Validacion<R> | Promise<Validacion<R>>;
   maxIntentos?: number;
   temperatura?: number; // 0 salvo justificación explícita del agente
+  signal?: AbortSignal; // cancela la llamada en curso (tiempo límite)
 }): Promise<{ valor: R; modelo: string; intentos: number; erroresPrevios: string[]; uso: UsoTokens }> {
   const max = opts.maxIntentos ?? 3;
   const mensajes: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -47,7 +49,7 @@ export async function generarValidado<S extends z.ZodType, R>(opts: {
       seed: 7,
       messages: mensajes,
       response_format: zodResponseFormat(opts.schema, opts.nombreSchema),
-    });
+    }, { signal: opts.signal });
     uso.entrada += r.usage?.prompt_tokens ?? 0;
     uso.salida += r.usage?.completion_tokens ?? 0;
     const msg = r.choices[0]?.message;

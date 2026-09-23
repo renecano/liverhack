@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { SalidaInvalidaError } from "@/lib/ia/llm";
 import { esPrueba } from "@/lib/ia/prueba";
 import { sugerenciasGuardadasDe, sugerirVacantesDeProceso } from "@/lib/ia/sugeridor";
 
@@ -26,26 +25,19 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  try {
-    // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
-    const r = await sugerirVacantesDeProceso(p.data.candidato_vacante_id, { id: null, rol: null }, { prueba: esPrueba(req) });
-    if ("error" in r && r.error) {
-      const errores = {
-        no_encontrado: [404, "Candidato no encontrado en esa vacante"],
-        seleccionado: [409, "Solo se sugieren vacantes a candidatos no seleccionados (descartado o pool)"],
-        sin_ficha: [409, "El candidato aún no tiene ficha: corre primero el extractor"],
-      } as const;
-      const [status, error] = errores[r.error];
-      return Response.json({ error }, { status });
-    }
-    return Response.json(r);
-  } catch (err) {
-    if (err instanceof SalidaInvalidaError) {
-      return Response.json(
-        { error: "La IA no produjo motivos válidos; no se guardó nada.", detalles: err.errores },
-        { status: 422 },
-      );
-    }
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
-  }
+  // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
+  // sugerirVacantesDeProceso nunca lanza: toda falla llega como { ok: false, error }.
+  const r = await sugerirVacantesDeProceso(p.data.candidato_vacante_id, { prueba: esPrueba(req) });
+  if (r.ok) return Response.json(r);
+  const HTTP: Record<typeof r.error, [number, string]> = {
+    no_encontrado: [404, "Candidato no encontrado en esa vacante"],
+    seleccionado: [409, "Solo se sugieren vacantes a candidatos no seleccionados (descartado o pool)"],
+    sin_ficha: [409, "El candidato aún no tiene ficha: corre primero el extractor"],
+    sin_proceso_no_seleccionado: [409, "El candidato no tiene un proceso en descartado o pool"],
+    salida_invalida: [422, "La IA no produjo motivos válidos; no se guardó nada."],
+    timeout: [504, "La IA tardó demasiado; no se guardó nada."],
+    interno: [500, "Error interno al sugerir vacantes"],
+  };
+  const [status, error] = HTTP[r.error];
+  return Response.json({ error, codigo: r.error, detalle: r.detalle }, { status });
 }
