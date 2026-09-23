@@ -69,10 +69,23 @@ export interface NuevaNotificacion {
   contenido: string;
 }
 
+/** Clave del índice parcial notificaciones_un_borrador (vacante_id NULL = distinto). */
+function claveBorrador(n: { destinatario_tipo: string; destinatario_id: string; vacante_id: string | null; tipo: string }): string {
+  return [n.destinatario_tipo, n.destinatario_id, n.vacante_id, n.tipo].join("\u0000");
+}
+
 /**
  * Siempre en 'borrador': un humano (AT) la aprueba antes de enviarla.
  * El texto es una plantilla determinista; el agente de feedback personalizado
  * (dominio IA) puede reescribirla antes de la aprobación.
+ *
+ * Respeta el índice único parcial `notificaciones_un_borrador`: si ya hay un
+ * borrador idéntico (mismo destinatario/vacante/tipo) no se crea otro; el aviso
+ * pendiente basta (cero ghosting sin spam). Se filtra en la aplicación porque el
+ * índice es PARCIAL (where estatus='borrador') y PostgREST no infiere ese
+ * predicado en un upsert/on-conflict. `vacante_id` NULL nunca deduplica (NULLS
+ * DISTINCT). Sin transacción hay una carrera teórica; en ese caso el índice
+ * seguiría protegiendo la unicidad a nivel BD.
  */
 export async function crearNotificaciones(
   db: SupabaseClient,
@@ -80,11 +93,36 @@ export async function crearNotificaciones(
   nuevas: NuevaNotificacion[],
 ): Promise<Notificacion[]> {
   if (nuevas.length === 0) return [];
+  const filas = nuevas.map((n) => ({ canal: "correo" as CanalNotificacion, ...n, estatus: "borrador" as const }));
+
+  // Borradores ya existentes que colisionarían (solo para filas con vacante_id).
+  const vacanteIds = [...new Set(filas.map((f) => f.vacante_id).filter((id): id is string => id !== null))];
+  const existentes = new Set<string>();
+  if (vacanteIds.length > 0) {
+    const previos = revisar<{ destinatario_tipo: DestinatarioTipo; destinatario_id: string; vacante_id: string | null; tipo: TipoNotificacion }[]>(
+      await db
+        .from("notificaciones")
+        .select("destinatario_tipo, destinatario_id, vacante_id, tipo")
+        .eq("estatus", "borrador")
+        .in("vacante_id", vacanteIds),
+      "borradores existentes",
+    );
+    for (const p of previos) existentes.add(claveBorrador(p));
+  }
+
+  // Descarta duplicados contra la BD y dentro del propio lote.
+  const vistos = new Set<string>();
+  const aInsertar = filas.filter((f) => {
+    if (f.vacante_id === null) return true; // NULLS DISTINCT: nunca colisiona.
+    const k = claveBorrador(f);
+    if (existentes.has(k) || vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+  if (aInsertar.length === 0) return [];
+
   const creadas = revisar<Notificacion[]>(
-    await db
-      .from("notificaciones")
-      .insert(nuevas.map((n) => ({ canal: "correo", ...n, estatus: "borrador" })))
-      .select(),
+    await db.from("notificaciones").insert(aInsertar).select(),
     "notificaciones",
   );
   for (const n of creadas) {

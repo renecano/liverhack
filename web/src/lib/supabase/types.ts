@@ -48,6 +48,8 @@ export type TipoNotificacion =
   | "reactivacion";
 export type CanalNotificacion = "correo" | "portal";
 export type EstatusNotificacion = "borrador" | "aprobada" | "enviada";
+export type TipoEntrevista = "competencias" | "panel";
+export type OrigenContenido = "ia" | "manual";
 
 export interface Usuario {
   id: string;
@@ -139,6 +141,19 @@ export interface Notificacion {
   contenido: string | null;
   estatus: EstatusNotificacion;
   aprobada_por: string | null;
+  ts: string;
+}
+
+export interface PreguntaEntrevista {
+  id: string;
+  vacante_id: string;
+  candidato_id: string;
+  preguntas: unknown[];
+  generado_por: OrigenContenido;
+  /** Tipo de sesión de entrevista (migración 20260923221237). */
+  tipo: TipoEntrevista;
+  /** Qué motivó las preguntas; trazabilidad para el dominio IA (migración 20260923221237). */
+  origen: string | null;
   ts: string;
 }
 
