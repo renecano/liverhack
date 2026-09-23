@@ -15,7 +15,7 @@ import { temasProhibidos } from "./temas-prohibidos";
 // antes de que el AT apruebe el lote. Nunca se toca una fila que ya no esté en
 // 'borrador' (la condición va en el mismo UPDATE).
 
-export const VERSION_PROMPT_MENSAJE = "mensaje-v2";
+export const VERSION_PROMPT_MENSAJE = "mensaje-v3";
 // 0.2 y no 0: son cientos de mensajes a personas y a temperatura 0 salen casi
 // idénticos entre candidatos con fichas parecidas; un poco de variación hace
 // que no se lean como plantilla. El contenido lo acotan la validación en código
@@ -24,6 +24,8 @@ const TEMPERATURA_MENSAJE = 0.2;
 const MIN_PALABRAS = 120;
 const MAX_PALABRAS = 200;
 const PLACEHOLDER = "{{nombre}}";
+// Saludo: "Hola, {{nombre}}:" en su propia línea (no "Hola Carlos, Queremos…").
+const SALUDO = /^Hola, \{\{nombre\}\}:[ \t]*\r?\n/;
 
 export type Tono = "avance" | "cierre" | "bienvenida";
 type TipoSoportado = "cambio_etapa" | "resultado";
@@ -118,7 +120,7 @@ const SISTEMA = `Eres el redactor de LivHire (El Puerto de Liverpool). Reescribe
 
 Reglas:
 - Español, ${MIN_PALABRAS}-${MAX_PALABRAS} palabras, trato de "tú", tono profesional y humano. Firma como "Equipo de Atracción de Talento de Liverpool".
-- Empieza con "Hola ${PLACEHOLDER}," y usa ${PLACEHOLDER} donde iría el nombre (nunca escribas un nombre real).
+- La primera línea es exactamente "Hola, ${PLACEHOLDER}:" y el texto sigue en la línea siguiente. Usa ${PLACEHOLDER} donde iría el nombre (nunca escribas un nombre real).
 - Menciona 1 o 2 fortalezas REALES de la lista que te doy, con su redacción, y decláralas en "fortalezas_usadas".
 - Respeta los hechos del aviso base (vacante, etapa, resultado). No prometas nada que no diga.
 - Tono "avance": buenas noticias y siguiente paso. Tono "bienvenida": felicita y confirma el ingreso. Tono "cierre": agradece, da una razón constructiva (en términos de lo que el puesto requería, sin juicios sobre la persona) y, si hay vacantes sugeridas, invítale a considerarlas nombrándolas.
@@ -155,6 +157,7 @@ function validarMensaje(crudo: SalidaMensajeLLM, c: Contexto & { tono: Tono }) {
   const nm = normalizar(m);
 
   if (!m.includes(PLACEHOLDER)) errores.push(`El mensaje debe usar ${PLACEHOLDER} para el nombre`);
+  if (!SALUDO.test(m)) errores.push(`La primera línea debe ser exactamente "Hola, ${PLACEHOLDER}:" y el texto seguir en la línea siguiente`);
   const otros = m.match(/\{\{[^}]*\}\}/g)?.filter((x) => x !== PLACEHOLDER) ?? [];
   if (otros.length) errores.push(`Placeholders no permitidos: ${otros.join(", ")}`);
   const n = palabras(m);
