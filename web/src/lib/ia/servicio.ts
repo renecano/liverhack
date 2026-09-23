@@ -1,5 +1,5 @@
 import "server-only";
-import { supabaseAdmin } from "./supabase-provisional";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { extraerFicha, VERSION_PROMPT, type SalidaExtractor } from "./extractor";
 
 // Capa de persistencia del agente 2. Frontera con Persona A (docs/06):
@@ -21,7 +21,7 @@ export async function registrarAudit(params: {
   detalle: Record<string, unknown>;
   prueba?: boolean;
 }) {
-  const { error } = await supabaseAdmin()
+  const { error } = await createAdminClient()
     .from("audit_log")
     .insert({
       actor_id: params.actor.id,
@@ -69,13 +69,13 @@ export function rutaStorage(cvUrl: string): { bucket: string; ruta: string } | n
 export async function descargarCv(cvUrl: string): Promise<Uint8Array | null> {
   const r = rutaStorage(cvUrl);
   if (!r) return null;
-  const { data, error } = await supabaseAdmin().storage.from(r.bucket).download(r.ruta);
+  const { data, error } = await createAdminClient().storage.from(r.bucket).download(r.ruta);
   if (error || !data) return null;
   return new Uint8Array(await data.arrayBuffer());
 }
 
 async function contextoVacante(vacanteId: string) {
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const [v, nn] = await Promise.all([
     sb.from("vacantes").select("id, titulo, descripcion").eq("id", vacanteId).single(),
     sb.from("no_negociables").select("id, texto, tipo").eq("vacante_id", vacanteId).order("id"),
@@ -125,7 +125,7 @@ export interface EntradaCarga {
 }
 
 export async function procesarCarga(entrada: EntradaCarga) {
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const cvTexto = entrada.cvPdf ? await textoDePdf(entrada.cvPdf) : (entrada.cvTexto ?? "");
   if (!cvTexto.trim()) throw new Error("No se pudo leer texto del CV");
 

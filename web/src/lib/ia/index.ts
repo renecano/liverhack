@@ -1,3 +1,4 @@
+import "server-only";
 /**
  * Punto de entrada del dominio IA para código de otros dominios (orquestador y
  * pantallas de Persona A). Solo servidor.

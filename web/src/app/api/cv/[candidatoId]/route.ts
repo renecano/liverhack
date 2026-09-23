@@ -1,10 +1,10 @@
-import { supabaseAdmin } from "@/lib/ia/supabase-provisional";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { descargarCv } from "@/lib/ia/servicio";
 
 // Visor de CV: sirve el PDF desde Storage (bucket privado) al iframe del visor.
 export async function GET(_req: Request, ctx: RouteContext<"/api/cv/[candidatoId]">) {
   const { candidatoId } = await ctx.params;
-  const { data } = await supabaseAdmin()
+  const { data } = await createAdminClient()
     .from("candidatos")
     .select("cv_url")
     .eq("id", candidatoId)

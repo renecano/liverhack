@@ -15,7 +15,7 @@ import { clasificarNoNegociable } from "./obtenible";
 import { crearVerificadorCitas, normalizar, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
 import { conLimite, clasificarError, detalleSeguro, type ErrorGenerico, type Ejecucion } from "./seguro";
 import { registrarAuditSeguro, type Actor, type OpcionesAudit } from "./servicio";
-import { supabaseAdmin } from "./supabase-provisional";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { temasProhibidos } from "./temas-prohibidos";
 
 // Agente 6 de docs/04: sugeridor de vacantes para candidatos no seleccionados.
@@ -202,7 +202,7 @@ export async function guardarSugerencias(p: {
   candidatoId: string;
   sugerencias: Sugerencia[];
 }): Promise<{ persistido: boolean; insertadas: number; actualizadas: number; protegidas: number; borradas: number }> {
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const ts = new Date().toISOString();
   let insertadas = 0;
   let actualizadas = 0;
@@ -262,7 +262,7 @@ export interface SugerenciaGuardada {
 
 // Lectura sin regenerar: todas las sugerencias del candidato (incluidas las ya decididas).
 export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const cv = await sb.from("candidato_vacante").select("candidato_id").eq("id", candidatoVacanteId).maybeSingle();
   if (cv.error) throw new Error(cv.error.message);
   if (!cv.data) return { error: "no_encontrado" as const };
@@ -376,7 +376,7 @@ async function ejecutarSugerir(
  */
 export async function sugerirVacantes(candidatoId: string, opciones: OpcionesSugerir = {}): Promise<ResultadoSugerir> {
   return ejecutarSugerir(opciones, { tipo: "candidatos", id: candidatoId }, async (e, actor) => {
-    let q = supabaseAdmin()
+    let q = createAdminClient()
       .from("candidato_vacante")
       .select("id")
       .eq("candidato_id", candidatoId)
@@ -409,7 +409,7 @@ async function nucleoSugerir(
   ej: Ejecucion,
 ): Promise<ResultadoSugerir> {
   const t0 = Date.now();
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const cv = await sb
     .from("candidato_vacante")
     .select("id, candidato_id, vacante_id, estatus, ficha, cumple_no_negociables, candidatos(nombre, escolaridad)")

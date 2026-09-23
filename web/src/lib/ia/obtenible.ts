@@ -1,3 +1,4 @@
+import "server-only";
 // ¿Un no negociable que el candidato NO cumple se puede obtener después
 // (certificación, curso, diplomado) o es sustantivo (años de experiencia,
 // liderazgo, nivel de idioma, título)? Reglas en código, no con el LLM, para

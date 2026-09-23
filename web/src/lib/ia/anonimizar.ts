@@ -1,3 +1,4 @@
+import "server-only";
 // Evaluación ciega (docs/04 §0): antes de mandar texto al LLM se ocultan
 // nombre, género, edad y código postal, más PII no relevante (contacto,
 // domicilio, estado civil, identificadores oficiales). Lo que queda es

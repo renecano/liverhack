@@ -1,5 +1,5 @@
 import "server-only";
-import { supabaseAdmin } from "./supabase-provisional";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { CumpleNoNegociable, EstadoNoNegociable, Ficha } from "./schemas";
 
 // Lecturas para la lista y la comparativa (vistas HM/AT).
@@ -105,7 +105,7 @@ function aFila(r: Crudo): FilaCandidato {
 }
 
 export async function listarCandidatos(vacanteId?: string): Promise<FilaCandidato[]> {
-  let q = supabaseAdmin().from("candidato_vacante").select(SELECT);
+  let q = createAdminClient().from("candidato_vacante").select(SELECT);
   if (vacanteId) q = q.eq("vacante_id", vacanteId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -117,14 +117,14 @@ export async function listarCandidatos(vacanteId?: string): Promise<FilaCandidat
 
 export async function obtenerCandidatos(ids: string[]): Promise<FilaCandidato[]> {
   if (ids.length === 0) return [];
-  const { data, error } = await supabaseAdmin().from("candidato_vacante").select(SELECT).in("id", ids);
+  const { data, error } = await createAdminClient().from("candidato_vacante").select(SELECT).in("id", ids);
   if (error) throw new Error(error.message);
   const filas = (data as unknown as Crudo[]).map(aFila);
   return ids.map((id) => filas.find((f) => f.id === id)).filter((f): f is FilaCandidato => Boolean(f));
 }
 
 export async function listarVacantes() {
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await createAdminClient()
     .from("vacantes")
     .select("id, titulo, etapa_actual, estatus")
     .order("fecha_apertura", { ascending: false });

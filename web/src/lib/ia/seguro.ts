@@ -1,3 +1,4 @@
+import "server-only";
 // Ejecución "que nunca lanza" para las funciones que llama código de otro
 // dominio (orquestador de Persona A). Módulo puro, sin dependencias.
 //

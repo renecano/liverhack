@@ -6,7 +6,7 @@ import { SalidaMensajeLLM, type Ficha } from "./schemas";
 import { normalizar } from "./semaforo";
 import { conLimite, clasificarError, detalleSeguro, type ErrorGenerico, type Ejecucion } from "./seguro";
 import { registrarAuditSeguro, type Actor } from "./servicio";
-import { supabaseAdmin } from "./supabase-provisional";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { temasProhibidos } from "./temas-prohibidos";
 
 // Agente 5 de docs/04: feedback personalizado.
@@ -58,7 +58,7 @@ interface Contexto {
 }
 
 async function cargarContexto(candidatoId: string, vacanteId: string, tono: (estatus: string) => Tono): Promise<(Contexto & { tono: Tono }) | null> {
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const [cand, cv, vac, dec, ents, sug] = await Promise.all([
     sb.from("candidatos").select("nombre").eq("id", candidatoId).maybeSingle(),
     sb.from("candidato_vacante").select("estatus, ficha").eq("candidato_id", candidatoId).eq("vacante_id", vacanteId).maybeSingle(),
@@ -327,7 +327,7 @@ export async function personalizarBorrador(
   opciones: OpcionesPersonalizar = {},
 ): Promise<ResultadoPersonalizar> {
   return ejecutarPersonalizar(opciones, notificacionId, false, async (ej) => {
-    const sb = supabaseAdmin();
+    const sb = createAdminClient();
     const n = await sb
       .from("notificaciones")
       .select("id, destinatario_tipo, destinatario_id, vacante_id, tipo, estatus, contenido")

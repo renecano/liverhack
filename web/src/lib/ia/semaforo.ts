@@ -1,3 +1,4 @@
+import "server-only";
 import type { CumpleNoNegociable, EstadoNoNegociable } from "./schemas";
 
 // Semáforo de no negociables compartido por el extractor (agente 2) y el

@@ -14,7 +14,7 @@ import {
 } from "./schemas";
 import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
 import { temasProhibidos } from "./temas-prohibidos";
-import { supabaseAdmin } from "./supabase-provisional";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // Agente 3 de docs/04: generador de preguntas de entrevista.
 // Entrada: ficha + semáforo de no negociables + vacante + tipo de entrevista.
@@ -250,7 +250,7 @@ export async function guardarPreguntas(p: {
   preguntas: Pregunta[];
 }): Promise<{ persistido: boolean; ts: string }> {
   const ts = new Date().toISOString();
-  const { error } = await supabaseAdmin()
+  const { error } = await createAdminClient()
     .from("preguntas_entrevista")
     .upsert(
       { vacante_id: p.vacanteId, candidato_id: p.candidatoId, tipo: p.tipo, preguntas: p.preguntas, generado_por: "ia", ts },
@@ -273,7 +273,7 @@ export async function obtenerPreguntasGuardadas(
   candidatoId: string,
   tipo: TipoEntrevista,
 ): Promise<SetPreguntasGuardado | null> {
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await createAdminClient()
     .from("preguntas_entrevista")
     .select("tipo, preguntas, generado_por, ts")
     .eq("vacante_id", vacanteId)
@@ -293,7 +293,7 @@ export async function obtenerPreguntasGuardadas(
 }
 
 async function candidatoVacante(candidatoVacanteId: string) {
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await createAdminClient()
     .from("candidato_vacante")
     .select("id, candidato_id, vacante_id, ficha, cumple_no_negociables, candidatos(nombre), vacantes(titulo, descripcion)")
     .eq("id", candidatoVacanteId)
@@ -315,7 +315,7 @@ export async function generarPreguntasParaCandidato(
   actor: Actor,
   opciones: OpcionesAudit = {},
 ) {
-  const sb = supabaseAdmin();
+  const sb = createAdminClient();
   const cv = await candidatoVacante(candidatoVacanteId);
   if (!cv) return { error: "no_encontrado" as const };
 

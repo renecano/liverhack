@@ -1,3 +1,4 @@
+import "server-only";
 // Temas prohibidos en preguntas de entrevista (evaluación sin discriminación,
 // regla de oro 6). Se valida sobre texto normalizado (sin acentos, minúsculas).
 // Módulo puro, sin dependencias, para poder probarlo aislado.
