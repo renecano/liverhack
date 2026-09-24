@@ -6,7 +6,7 @@ import { Encabezado } from '@/components/proceso/piezas';
 
 export const dynamic = 'force-dynamic';
 
-// Centro de notificaciones "Cero ghosting" del HM. Lee con la sesión: RLS decide qué ve.
+// Centro de comunicación "Cero ghosting" del HM. Lee con la sesión: RLS decide qué ve.
 export default async function HmNotificacionesPage() {
   const supabase = await createClient();
   const { data } = await supabase.from('notificaciones').select('*').order('ts', { ascending: false }).limit(40);
@@ -24,10 +24,10 @@ export default async function HmNotificacionesPage() {
 
   return (
     <div className="space-y-10">
-      <Encabezado eyebrow="Hiring Manager" titulo={<>Cero <span className="text-gradient-liv">ghosting.</span></>}>
+      <Encabezado eyebrow="Centro de comunicación" titulo={<>Cero <span className="text-gradient-liv">ghosting.</span></>}>
         Alertas de tus vacantes y el estado de cada aviso a candidatos: borrador, aprobado o enviado.
       </Encabezado>
-      <NotificationCenter notificaciones={notificaciones} entregas={entregas} destinatarios={destinatarios} />
+      <NotificationCenter titulo="Bandeja de comunicación" notificaciones={notificaciones} entregas={entregas} destinatarios={destinatarios} />
     </div>
   );
 }

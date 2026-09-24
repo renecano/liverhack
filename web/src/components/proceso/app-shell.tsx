@@ -26,13 +26,13 @@ const NAV: Record<RolUsuario, ItemNav[]> = {
   hm: [
     { href: '/hm', label: 'Mis vacantes' },
     { href: '/hm/candidatos', label: 'Candidatos' },
-    { href: '/hm/notificaciones', label: 'Notificaciones' },
+    { href: '/hm/notificaciones', label: 'Comunicación' },
   ],
   at: [
     { href: '/at', label: 'Pipeline' },
     { href: '/at/candidatos', label: 'Candidatos' },
     { href: '/at/carga', label: 'Carga IA' },
-    { href: '/at/comunicaciones', label: 'Comunicaciones' },
+    { href: '/at/comunicaciones', label: 'Comunicación' },
   ],
   hrbp: [
     { href: '/hrbp', label: 'SLA y directorio' },

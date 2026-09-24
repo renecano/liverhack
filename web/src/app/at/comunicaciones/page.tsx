@@ -7,7 +7,7 @@ import { Encabezado, Metrica } from '@/components/proceso/piezas';
 
 export const dynamic = 'force-dynamic';
 
-// Centro de comunicaciones "Cero ghosting" del AT: borradores de la IA → aprobación por lote.
+// Centro de comunicación "Cero ghosting" del AT: borradores de la IA → aprobación por lote.
 // Lee con la sesión (RLS: el AT ve todas las notificaciones).
 export default async function ComunicacionesPage() {
   const supabase = await createClient();
@@ -31,7 +31,7 @@ export default async function ComunicacionesPage() {
 
   return (
     <div className="space-y-10">
-      <Encabezado eyebrow="Centro de comunicaciones" titulo={<>Cero ghosting, <span className="text-gradient-liv">por diseño.</span></>}>
+      <Encabezado eyebrow="Centro de comunicación" titulo={<>Cero ghosting, <span className="text-gradient-liv">por diseño.</span></>}>
         Cada cambio de etapa genera un aviso. La IA lo redacta y lo personaliza; tú lo apruebas en lote y sale. Nadie se queda sin respuesta.
       </Encabezado>
 
