@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Quote, TriangleAlert } from "lucide-react";
 import { BadgeReferido } from "@/components/ia/BadgeReferido";
 import { BotonCv } from "@/components/ia/BotonCv";
+import { PanelAnalisisLiv } from "@/components/ia/PanelAnalisisLiv";
 import { PanelCvComparativa } from "@/components/ia/PanelCvComparativa";
 import { ETIQUETA, SemaforoDetalle } from "@/components/ia/Semaforo";
 import { TemaIA } from "@/components/ia/TemaIA";
@@ -274,6 +275,9 @@ export async function PantallaComparativa({
             );
           })}
         </div>
+
+        {/* Liv como copiloto de análisis: solo en la vista del AT (consejo; decide el AT). */}
+        {base === "/at/candidatos" && <PanelAnalisisLiv ids={cands.map((c) => c.id)} />}
 
         <section>
           <div className="mb-4">
