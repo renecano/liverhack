@@ -560,19 +560,10 @@ export async function registrarDecision(
     },
   ]);
 
-  // Reemparejar: la reubicación la hace el sugeridor de vacantes (dominio IA, agente 6),
-  // que consume este evento. El orquestador no llama a la IA.
-  if (efecto.disparaSugerencias) {
-    await registrarAudit(
-      db,
-      actor,
-      "solicitar_sugerencias_vacante",
-      "candidatos",
-      candidatoId,
-      { origen_vacante_id: vacanteId, motivo },
-      d.id,
-    );
-  }
+  // Reemparejar: la reubicación la hace el sugeridor de vacantes (dominio IA, agente 6).
+  // El orquestador no llama a la IA (también lo usan scripts fuera de Next): solo
+  // devuelve `sugerencias_solicitadas` y la Server Action registrarDecision la dispara
+  // en segundo plano con after() y deja el registro en audit_log.
 
   let cambio: ResultadoCambio | null = null;
   if (transicion) {
