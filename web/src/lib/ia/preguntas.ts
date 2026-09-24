@@ -12,7 +12,7 @@ import {
   type Ficha,
   type TipoEntrevista,
 } from "./schemas";
-import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
+import { asegurarFicha, registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
 import { temasProhibidos } from "./temas-prohibidos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -320,11 +320,20 @@ export async function generarPreguntasParaCandidato(
   opciones: OpcionesAudit = {},
 ) {
   const sb = createAdminClient();
-  const cv = await candidatoVacante(sb, candidatoVacanteId);
+  let cv = await candidatoVacante(sb, candidatoVacanteId);
   if (!cv) return { error: "no_encontrado" as const };
 
+  // Sin ficha: se analiza el CV guardado en este momento (mismo extractor que la carga).
+  let fichaGenerada = false;
+  if (!(cv.ficha as Partial<Ficha> | null)?.descripcion) {
+    const f = await asegurarFicha(candidatoVacanteId, actor, opciones);
+    if (!f.ok) return { error: f.error };
+    fichaGenerada = f.generada;
+    cv = await candidatoVacante(sb, candidatoVacanteId);
+    if (!cv) return { error: "no_encontrado" as const };
+  }
   const ficha = (cv.ficha ?? {}) as Partial<Ficha>;
-  if (!ficha.descripcion) return { error: "sin_ficha" as const };
+  if (!ficha.descripcion) return { error: "ficha_invalida" as const };
 
   // Un set escrito a mano es trabajo humano: la IA no lo sobrescribe.
   // Se revisa antes de llamar al modelo para no gastar en una generación que no se guardaría.
@@ -375,5 +384,5 @@ export async function generarPreguntasParaCandidato(
     },
   });
 
-  return { salida, persistido, ts };
+  return { salida, persistido, ts, fichaGenerada };
 }

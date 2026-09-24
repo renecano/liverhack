@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { PreguntaGuardada, TipoEntrevista } from "@/lib/ia/schemas";
 import { PreguntasEntrevista } from "./PreguntasEntrevista";
@@ -19,10 +20,19 @@ const fecha = (ts: string) =>
 export function PanelPreguntas({
   candidatoVacanteId,
   noNegociables,
+  tieneFicha = true,
+  tieneCv = true,
 }: {
   candidatoVacanteId: string;
   noNegociables: { id: string; texto: string }[];
+  /** Sin ficha, "Generar" primero analiza el CV guardado (lo hace el servidor). */
+  tieneFicha?: boolean;
+  tieneCv?: boolean;
 }) {
+  const router = useRouter();
+  const [fichaLista, setFichaLista] = useState(tieneFicha);
+  const [fase, setFase] = useState<"analizando" | "generando">("generando");
+  const sinCv = !fichaLista && !tieneCv;
   const [tipo, setTipo] = useState<TipoEntrevista>("competencias");
   const [porTipo, setPorTipo] = useState<Partial<Record<TipoEntrevista, Estado>>>({});
   const estado: Estado = porTipo[tipo] ?? { tipo: "cargando" };
@@ -55,6 +65,12 @@ export function PanelPreguntas({
   async function generar() {
     const t = tipo;
     fijar(t, { tipo: "generando", previo: estado });
+    // Si falta la ficha, el servidor analiza el CV primero (≈15-25 s) y luego genera.
+    let reloj: ReturnType<typeof setTimeout> | undefined;
+    if (!fichaLista) {
+      setFase("analizando");
+      reloj = setTimeout(() => setFase("generando"), 20_000);
+    } else setFase("generando");
     try {
       const r = await fetch("/api/ia/preguntas", {
         method: "POST",
@@ -62,6 +78,11 @@ export function PanelPreguntas({
         body: JSON.stringify({ candidato_vacante_id: candidatoVacanteId, tipo: t }),
       });
       const j = await r.json();
+      if (r.ok && j.ficha_generada) {
+        // La fila (semáforo, compatibilidad) se refresca con la ficha recién creada.
+        setFichaLista(true);
+        router.refresh();
+      }
       fijar(
         t,
         r.ok
@@ -70,6 +91,8 @@ export function PanelPreguntas({
       );
     } catch {
       fijar(t, { tipo: "error", mensaje: "No se pudo contactar al servidor" });
+    } finally {
+      clearTimeout(reloj);
     }
   }
 
@@ -101,7 +124,8 @@ export function PanelPreguntas({
         {!esManual && (
           <button
             onClick={generar}
-            disabled={estado.tipo === "generando" || estado.tipo === "cargando"}
+            disabled={estado.tipo === "generando" || estado.tipo === "cargando" || sinCv}
+            title={sinCv ? "Este candidato no tiene CV cargado" : undefined}
             className="whitespace-nowrap rounded-sm bg-[var(--lh-accent)] px-3 py-1 text-xs font-medium text-white hover:brightness-110 disabled:opacity-60"
           >
             {estado.tipo === "generando" ? "Generando…" : hayPreguntas ? "Regenerar" : "Generar preguntas"}
@@ -117,7 +141,18 @@ export function PanelPreguntas({
       </div>
 
       {estado.tipo === "cargando" && <p className="text-xs text-[var(--lh-muted)]">Cargando preguntas guardadas…</p>}
-      {visible?.tipo === "vacio" && (
+      {estado.tipo === "generando" && (
+        <p role="status" className="flex items-center gap-2 text-xs text-[var(--lh-ink-2)]">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--lh-accent)] border-t-transparent" />
+          {fase === "analizando" ? "Analizando el CV del candidato…" : "Generando preguntas personalizadas…"}
+        </p>
+      )}
+      {sinCv && estado.tipo !== "ok" && (
+        <p className="rounded-sm border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          Este candidato no tiene CV cargado; súbelo para generar preguntas.
+        </p>
+      )}
+      {visible?.tipo === "vacio" && !sinCv && (
         <p className="text-xs text-[var(--lh-muted)]">
           Aún no hay preguntas de tipo {tipo}. La IA propone 6-10 desde la ficha anonimizada: confirma los no negociables
           que ya se cumplen, valida a fondo los parciales y explora las áreas de oportunidad.

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ResumenVacante } from "@/lib/orquestador/resumen";
-import { priorizar } from "../asistente";
+import { esPreguntaDePendientes, priorizar } from "../asistente";
 
 function vacante(p: Partial<ResumenVacante> & Pick<ResumenVacante, "id" | "titulo">): ResumenVacante {
   return {
@@ -55,5 +55,32 @@ describe("priorizar (asistente del HM)", () => {
   });
   it("sin pendientes → lista vacía", () => {
     assert.equal(priorizar({ vacantes: [vacantes[0]], porDecidir: {}, borradoresPendientes: 0 }).length, 0);
+  });
+});
+
+describe("priorizar por rol (Liv para AT/HRBP)", () => {
+  const AT = "u-at";
+  const vs = [
+    vacante({ id: "a", titulo: "Espera al HM", estado: "ESPERANDO_HM_DEFINE_POOL", esperando_hm: true, responsable: { id: "u-hm", nombre: "Aileen", rol: "hm" } }),
+    vacante({ id: "b", titulo: "Me toca y atrasada", semaforo: "atrasada", dias_restantes: -2, responsable: { id: AT, nombre: "Daniela", rol: "at" } }),
+    vacante({ id: "c", titulo: "Me toca", dias_restantes: 8, responsable: { id: AT, nombre: "Daniela", rol: "at" } }),
+  ];
+  const items = priorizar({ vacantes: vs, porDecidir: {}, borradoresPendientes: 0, yo: { id: AT, rol: "at" } });
+  it("para el AT, lo suyo es lo que tiene en la mano, no las compuertas del HM", () => {
+    assert.deepEqual(items.map((i) => i.titulo), ["Me toca y atrasada", "Me toca"]);
+    assert.match(items[0].hechos, /te toca a ti/);
+  });
+  it("los enlaces apuntan a pantallas del rol", () => {
+    assert.equal(items[0].href, "/at/candidatos?vacante=b");
+  });
+  it("sin yo, se comporta como la vista del HM (mcp-server)", () => {
+    assert.deepEqual(priorizar({ vacantes: vs, porDecidir: {}, borradoresPendientes: 0 }).map((i) => i.titulo), ["Espera al HM", "Me toca y atrasada"]);
+  });
+});
+
+describe("esPreguntaDePendientes", () => {
+  it("detecta preguntas de prioridades y deja libres las demás", () => {
+    for (const q of ["¿Qué tengo que hacer hoy?", "¿Qué es lo más urgente?", "¿Por dónde empiezo?", "mis pendientes"]) assert.ok(esPreguntaDePendientes(q), q);
+    for (const q of ["¿Cuál está más atrasada?", "¿Quién bloquea la de Backend?", "¿Cuántas en riesgo?", "¿En qué va Ana López?"]) assert.ok(!esPreguntaDePendientes(q), q);
   });
 });

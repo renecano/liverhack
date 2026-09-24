@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { extraerFicha, VERSION_PROMPT, type SalidaExtractor } from "./extractor";
+import { ExtraccionInvalidaError, extraerFicha, VERSION_PROMPT, type SalidaExtractor } from "./extractor";
 
 // Capa de persistencia del agente 2. Frontera con Persona A (docs/06):
 // aquí SOLO se escriben ficha, fit_score, compatibilidad_nnn y
@@ -99,6 +99,79 @@ function detalleAudit(s: SalidaExtractor) {
     semaforo: s.resultado.cumple_no_negociables.map((c) => c.estado),
     evaluacion_ciega: { campos_ocultados: s.ocultados },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Ficha bajo demanda: candidato ya cargado pero sin ficha (p. ej. alta manual o
+// datos previos). Toma el CV guardado, corre el mismo extractor que la carga y
+// escribe SOLO los campos de IA de candidato_vacante (frontera con Persona A).
+// ---------------------------------------------------------------------------
+export type ResultadoFicha =
+  | { ok: true; generada: boolean }
+  | { ok: false; error: "no_encontrado" | "sin_cv" | "cv_ilegible" | "ficha_invalida" };
+
+export async function asegurarFicha(candidatoVacanteId: string, actor: Actor, opciones: OpcionesAudit = {}): Promise<ResultadoFicha> {
+  const sb = createAdminClient();
+  const { data: cv, error } = await sb
+    .from("candidato_vacante")
+    .select("id, vacante_id, ficha, candidatos(id, nombre, cv_url, escolaridad)")
+    .eq("id", candidatoVacanteId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!cv) return { ok: false, error: "no_encontrado" };
+  if ((cv.ficha as { descripcion?: string } | null)?.descripcion) return { ok: true, generada: false };
+
+  const c = (Array.isArray(cv.candidatos) ? cv.candidatos[0] : cv.candidatos) as
+    | { id: string; nombre: string; cv_url: string | null; escolaridad: string | null }
+    | null;
+  if (!c?.cv_url) return { ok: false, error: "sin_cv" };
+  const pdf = await descargarCv(c.cv_url);
+  if (!pdf) return { ok: false, error: "sin_cv" };
+  let cvTexto = "";
+  try {
+    cvTexto = await textoDePdf(pdf);
+  } catch {
+    return { ok: false, error: "cv_ilegible" };
+  }
+  if (!cvTexto.trim()) return { ok: false, error: "cv_ilegible" };
+
+  const [{ vacante, noNegociables }, evals] = await Promise.all([
+    contextoVacante(cv.vacante_id as string),
+    sb.from("evaluaciones").select("tipo, resumen").eq("candidato_id", c.id),
+  ]);
+  if (evals.error) throw new Error(evals.error.message);
+
+  let salida: SalidaExtractor;
+  try {
+    salida = await extraerFicha({ nombreCandidato: c.nombre, cvTexto, evaluaciones: evals.data ?? [], vacante, noNegociables });
+  } catch (err) {
+    if (err instanceof ExtraccionInvalidaError) return { ok: false, error: "ficha_invalida" };
+    throw err;
+  }
+  const r = salida.resultado;
+
+  // Solo si sigue sin ficha: no pisa una que haya llegado mientras tanto.
+  const u = await sb
+    .from("candidato_vacante")
+    .update({ ficha: r.ficha, fit_score: r.fit_score, compatibilidad_nnn: r.compatibilidad_nnn, cumple_no_negociables: r.cumple_no_negociables })
+    .eq("id", candidatoVacanteId)
+    .is("ficha->>descripcion", null)
+    .select("id");
+  if (u.error) throw new Error(`candidato_vacante: ${u.error.message}`);
+  if (!c.escolaridad && r.escolaridad) {
+    const e = await sb.from("candidatos").update({ escolaridad: r.escolaridad }).eq("id", c.id).is("escolaridad", null);
+    if (e.error) throw new Error(`candidatos.escolaridad: ${e.error.message}`);
+  }
+
+  await registrarAudit({
+    actor,
+    accion: "ia_extraer_ficha",
+    entidad: "candidato_vacante",
+    entidad_id: candidatoVacanteId,
+    prueba: opciones.prueba,
+    detalle: { ...detalleAudit(salida), origen: "bajo_demanda", escrita: (u.data ?? []).length > 0 },
+  });
+  return { ok: true, generada: true };
 }
 
 // ---------------------------------------------------------------------------

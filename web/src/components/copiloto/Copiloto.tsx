@@ -68,17 +68,20 @@ const ACCIONES: Record<RolUsuario, Accion[]> = {
 
 type Pestana = "chat" | "acciones" | "estatus";
 
+/** Roles con chat de Liv (el entrevistador no tiene vacantes a su cargo: usa sus atajos). */
+const CON_CHAT: RolUsuario[] = ["hm", "at", "hrbp", "admin"];
+
 /**
  * Copiloto flotante con la mascota de LivHire. Abre un panel con:
- * - Chat del asistente (solo HM: el agente 8 responde con sus pendientes reales).
+ * - Chat de Liv (agente 8): responde sobre el proceso con los datos reales de su rol.
  * - Acciones rápidas por rol (atajos a las pantallas donde un humano aprueba).
  * - Estatus de candidatos (lectura con la sesión: RLS decide qué se ve).
  * Nunca decide ni envía nada por sí mismo.
  */
 export function Copiloto({ rol, nombre }: { rol: RolUsuario; nombre: string }) {
-  const esHM = rol === "hm" || rol === "admin";
+  const conChat = CON_CHAT.includes(rol);
   const [abierto, setAbierto] = useState(false);
-  const [pestana, setPestana] = useState<Pestana>(esHM ? "chat" : "acciones");
+  const [pestana, setPestana] = useState<Pestana>(conChat ? "chat" : "acciones");
   const [semilla, setSemilla] = useState<{ texto: string; n: number } | null>(null);
   const [burbuja, setBurbuja] = useState(false);
   const [borradores, setBorradores] = useState<number | null>(null);
@@ -113,7 +116,7 @@ export function Copiloto({ rol, nombre }: { rol: RolUsuario; nombre: string }) {
       sessionStorage.setItem("livhire:burbuja", "0");
     } catch {}
   }, []);
-  // Burbuja → abre a Liv con la pregunta del día (el HM la recibe en el chat; los demás, sus atajos).
+  // Burbuja → abre a Liv con la pregunta del día (en el chat; el entrevistador ve sus atajos).
   const abrirConPregunta = useCallback(() => {
     descartarBurbuja();
     abrirCopiloto(PREGUNTA_HOY);
@@ -140,7 +143,7 @@ export function Copiloto({ rol, nombre }: { rol: RolUsuario; nombre: string }) {
     const alEvento = (e: Event) => {
       const pregunta = (e as CustomEvent<{ pregunta?: string }>).detail?.pregunta;
       abrir();
-      if (pregunta && esHM) {
+      if (pregunta && conChat) {
         setPestana("chat");
         setSemilla((s) => ({ texto: pregunta, n: (s?.n ?? 0) + 1 }));
       }
@@ -158,10 +161,10 @@ export function Copiloto({ rol, nombre }: { rol: RolUsuario; nombre: string }) {
       window.removeEventListener(EVENTO_COPILOTO, alEvento);
       window.removeEventListener("keydown", alTeclado);
     };
-  }, [abrir, alternar, esHM]);
+  }, [abrir, alternar, conChat]);
 
   const pestanas = [
-    ...(esHM ? [{ value: "chat" as const, label: "Asistente" }] : []),
+    ...(conChat ? [{ value: "chat" as const, label: "Asistente" }] : []),
     { value: "acciones" as const, label: "Acciones" },
     { value: "estatus" as const, label: "Estatus" },
   ];
@@ -207,7 +210,7 @@ export function Copiloto({ rol, nombre }: { rol: RolUsuario; nombre: string }) {
           </header>
 
           <div className="min-h-0 flex-1 bg-white/40">
-            {pestana === "chat" && esHM && <ChatAsistenteHM semilla={semilla} />}
+            {pestana === "chat" && conChat && <ChatAsistenteHM rol={rol} semilla={semilla} />}
             {pestana === "acciones" && (
               <div className="h-full space-y-2 overflow-y-auto p-4">
                 <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-[.14em] text-stone-400">Atajos</p>

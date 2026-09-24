@@ -159,7 +159,7 @@ export async function pendientesHM(nombreHM: string): Promise<string> {
   }
   const hm = hms[0];
 
-  // Mismo cálculo que preguntarAsistenteHM (web/src/lib/actions/asistente.ts).
+  // Mismo cálculo que preguntarAsistente (web/src/lib/actions/asistente.ts) para un HM.
   const ids = revisar<{ id: string }[]>(await db().from("vacantes").select("id").eq("hm_id", hm.id), "las vacantes").map((v) => v.id);
   const vacantes = ids.length ? await resumenVacantes({ ids }) : [];
   const porDecidir: Record<string, number> = {};

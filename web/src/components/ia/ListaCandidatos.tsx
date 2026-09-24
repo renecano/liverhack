@@ -93,14 +93,16 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                       />
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{f.nombre}</span>
-                        {f.es_referido && <BadgeReferido />}
-                      </div>
-                      <p className="text-xs text-[var(--lh-muted)]">
-                        {f.puesto_actual ?? "—"}
-                        {f.empresa_actual ? ` · ${f.empresa_actual}` : ""}
-                      </p>
+                      <Link href={`${base}/${f.id}`} className="group block rounded-lg" title={`Ver el detalle de ${f.nombre}`}>
+                        <span className="flex items-center gap-2">
+                          <span className="font-medium underline-offset-2 group-hover:text-liv-deep group-hover:underline">{f.nombre}</span>
+                          {f.es_referido && <BadgeReferido />}
+                        </span>
+                        <span className="block text-xs text-[var(--lh-muted)]">
+                          {f.puesto_actual ?? "—"}
+                          {f.empresa_actual ? ` · ${f.empresa_actual}` : ""}
+                        </span>
+                      </Link>
                     </td>
                     <td className="px-3 py-3 text-[13px]">{f.vacante_titulo}</td>
                     <td className="max-w-[220px] px-3 py-3 text-[13px] text-[var(--lh-ink-2)]">{f.escolaridad ?? "—"}</td>
@@ -176,7 +178,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                     <tr className="border-b border-[var(--lh-rule)] bg-liv-50/40" hidden={preguntasDe !== f.id}>
                       <td />
                       <td colSpan={9} className="px-3 py-4">
-                        <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} />
+                        <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} tieneFicha={Boolean(f.ficha.descripcion)} tieneCv={f.tiene_cv} />
                       </td>
                     </tr>
                   )}
