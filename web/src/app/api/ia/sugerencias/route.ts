@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const HTTP: Record<typeof r.error, [number, string]> = {
     no_encontrado: [404, "Candidato no encontrado en esa vacante"],
     seleccionado: [409, "Solo se sugieren vacantes a candidatos no seleccionados (descartado o pool)"],
-    sin_ficha: [409, "El candidato aún no tiene ficha: corre primero el extractor"],
+    sin_ficha: [409, "Aún no analizamos el CV de este candidato. Genera sus preguntas de entrevista (analiza el CV en el momento) o vuelve a cargar su CV."],
     sin_proceso_no_seleccionado: [409, "El candidato no tiene un proceso en descartado o pool"],
     salida_invalida: [422, "La IA no produjo motivos válidos; no se guardó nada."],
     timeout: [504, "La IA tardó demasiado; no se guardó nada."],

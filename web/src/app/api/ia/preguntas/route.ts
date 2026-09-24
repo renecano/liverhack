@@ -45,9 +45,12 @@ export async function POST(req: Request) {
       prueba: esPrueba(req),
     });
     if ("error" in r && r.error) {
+      // Mensajes para el usuario: sin jerga interna.
       const errores = {
         no_encontrado: [404, "Candidato no encontrado en esa vacante"],
-        sin_ficha: [409, "El candidato aún no tiene ficha: corre primero el extractor"],
+        sin_cv: [409, "Este candidato no tiene CV cargado; súbelo para generar preguntas."],
+        cv_ilegible: [422, "No pudimos leer el CV de este candidato (puede ser un PDF escaneado). Sube una versión con texto para generar preguntas."],
+        ficha_invalida: [422, "No pudimos analizar el CV de este candidato en este intento. Vuelve a intentarlo en un momento."],
         manual: [409, "Ya hay un set de preguntas escrito a mano para este tipo; la IA no lo sobrescribe"],
       } as const;
       const [status, error] = errores[r.error];
@@ -60,6 +63,7 @@ export async function POST(req: Request) {
       ts: r.ts,
       modelo: r.salida.modelo,
       intentos: r.salida.intentos,
+      ficha_generada: r.fichaGenerada,
     });
   } catch (err) {
     if (err instanceof SalidaInvalidaError) {

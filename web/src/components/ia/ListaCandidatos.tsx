@@ -176,7 +176,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                     <tr className="border-b border-[var(--lh-rule)] bg-liv-50/40" hidden={preguntasDe !== f.id}>
                       <td />
                       <td colSpan={9} className="px-3 py-4">
-                        <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} />
+                        <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} tieneFicha={Boolean(f.ficha.descripcion)} tieneCv={f.tiene_cv} />
                       </td>
                     </tr>
                   )}
