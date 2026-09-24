@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enviarCorreo } from "@/lib/acciones/email";
-import type { Notificacion, RolUsuario, TipoDecision, TipoNotificacion } from "@/lib/supabase/types";
+import type { Notificacion, TipoDecision, TipoNotificacion } from "@/lib/supabase/types";
 import {
   abrirVacante as abrirVacanteOrq,
   ErrorProceso,
@@ -23,27 +23,13 @@ import {
 import { resumenVacantes, type ResumenVacante } from "@/lib/orquestador/resumen";
 import { DECISIONES } from "@/lib/orquestador/estados";
 import { registrarAudit, revisar } from "@/lib/orquestador/persistencia";
+import { sesion } from "@/lib/auth/sesion";
 
 export type Resultado<T> =
   | { ok: true; data: T }
   | { ok: false; codigo: string; error: string };
 
 const id = z.guid();
-
-async function sesion() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: usuario } = await supabase
-    .from("usuarios")
-    .select("id, rol, activo")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!usuario?.activo) return null;
-  return { supabase, usuario: usuario as { id: string; rol: RolUsuario } };
-}
 
 async function puedeVerVacante(
   supabase: Awaited<ReturnType<typeof createClient>>,

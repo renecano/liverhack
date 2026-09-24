@@ -3,7 +3,7 @@ import { SalidaInvalidaError } from "@/lib/ia/llm";
 import { generarPreguntasParaCandidato, preguntasGuardadasDe } from "@/lib/ia/preguntas";
 import { esPrueba } from "@/lib/ia/prueba";
 import { TipoEntrevista } from "@/lib/ia/schemas";
-import { NO_ENCONTRADO, ROLES, sesionIA, veCandidatoVacante } from "@/lib/ia/sesion";
+import { NO_ENCONTRADO, ROLES, sesionIA, veCandidatoVacante } from "@/lib/ia/acceso";
 
 // Preguntas de entrevista de un candidato_vacante (agente 3).
 // GET: set guardado (sin regenerar). POST: genera, guarda (reemplaza el set del

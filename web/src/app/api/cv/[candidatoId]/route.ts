@@ -1,5 +1,5 @@
 import { descargarCv } from "@/lib/ia/servicio";
-import { NO_ENCONTRADO, ROLES, sesionIA } from "@/lib/ia/sesion";
+import { NO_ENCONTRADO, ROLES, sesionIA } from "@/lib/ia/acceso";
 
 // Visor de CV: sirve el PDF desde Storage al iframe del visor.
 // 1) Sesión + rol (HM/AT/admin). 2) cv_url se lee con el cliente de SESIÓN: si RLS

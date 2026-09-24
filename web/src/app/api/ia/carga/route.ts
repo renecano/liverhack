@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ExtraccionInvalidaError } from "@/lib/ia/extractor";
 import { esPrueba } from "@/lib/ia/prueba";
 import { procesarCarga } from "@/lib/ia/servicio";
-import { NO_ENCONTRADO, ROLES, sesionIA } from "@/lib/ia/sesion";
+import { NO_ENCONTRADO, ROLES, sesionIA } from "@/lib/ia/acceso";
 
 // Carga de candidato nuevo (vista AT): CV + evaluación → extractor → BD.
 export const maxDuration = 120;
