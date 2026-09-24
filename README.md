@@ -1,8 +1,6 @@
 # LivHire — Copiloto de Atracción de Talento
 ### LiverHack 2026 · El Puerto de Liverpool
 
-> Nombre de trabajo: **LivHire**.
-
 ## Propósito
 
 LivHire es una plataforma web **interna** que unifica y da proactividad al proceso de
@@ -28,13 +26,6 @@ concretos: el HM no sabe en qué va su proceso ni quién lo bloquea; la comparac
 candidatos vive en un Excel manual (AssessFirst); de ~300 candidatos, la mayoría nunca
 recibe respuesta.
 
-## Visión
-
-Que el HM decida en minutos, no leyendo expedientes. Que el HRBP tenga visibilidad real
-del SLA por área. Que **nadie quede sin respuesta**. Y que el "cerebro" del proceso no
-sea una app más que hay que abrir, sino algo consultable como infraestructura (por eso
-existe un servidor **MCP** que expone el estado del reclutamiento en lenguaje natural).
-
 ## Nuestros diferenciadores
 
 - **Gobernanza human-in-the-loop real:** la IA nunca rechaza ni hace ofertas sola; toda
@@ -55,39 +46,6 @@ existe un servidor **MCP** que expone el estado del reclutamiento en lenguaje na
   vía MCP.
 - **Trazabilidad total:** todo cambio relevante queda en un `audit_log` append-only.
 
-> Nota de evolución: una primera versión del proyecto planteaba una simulación
-> conversacional del puesto y un score de "permanencia" por distancia/commute. Se
-> descartó al confrontarla con el reto real de Liverpool; el propio repositorio lo deja
-> explícito en `AGENTS.md` para que nadie lo reintroduzca por error.
-
-## Arquitectura
-
-[Web HM] [Web AT] [Web HRBP] [Web Entrevistador] [Portal candidato ligero]
-\ | | | /
-Next.js (Vercel)
-│ API
-[ORQUESTADOR] ── máquina de estados 6 etapas + gobernanza
-código determinista, sin IA
-┌──────────────┬───────────┼────────────┬───────────────┐
-[Supabase] [ia-service] [sla-engine] [acciones] [mcp-server]
-Postgres + agentes LLM días hábiles Calendar + expone la
-Auth/Realtime (OpenAI) + semáforos correo real plataforma
-
-Storage(CV) (solo lectura)
-│
-[audit_log] append-only (dentro de Postgres)
-
-- **Orquestador:** máquina de estados de 6 etapas (Requisición → Alineación → Búsqueda
-  → Atracción → Selección → Oferta), con sub-estados `ESPERANDO_HM_*` cuando toca decidir
-  a una persona. No usa IA.
-- **ia-service:** 9 agentes LLM (alineación, extractor/comparador, generador de
-  preguntas, consolidador de feedback, feedback personalizado, sugeridor de vacantes,
-  reactivador, asistente del HM, fairness_report). Salida JSON validada contra schema.
-- **sla-engine:** días hábiles, semáforos, predicción de cobertura, alertas — código, no IA.
-- **acciones:** Google Calendar (OAuth) + Resend, con `ACTIONS_MODE=real|mock`.
-- **mcp-server:** herramientas MCP de solo lectura para Claude Desktop.
-- **Supabase:** Postgres + Auth con roles (RLS) + Realtime + Storage.
-
 ## Lenguajes y stack
 
 | Capa | Tecnología |
@@ -101,84 +59,158 @@ Storage(CV) (solo lectura)
 | Servidor MCP | Node.js + TypeScript, `@modelcontextprotocol/sdk`, stdio |
 | Calidad | ESLint, TypeScript estricto, scripts de verificación end-to-end |
 
-## Estructura del repositorio (contenido del ZIP)
+## Requisitos
 
-/AGENTS.md, /CLAUDE.md reglas de oro del proyecto (no romper)
-/docs/ 00-reto · 01-arquitectura · 02-modelo-datos ·
-03-estados-sla · 04-ia-agentes · 05-pantallas ·
-06-equipo · 07-seed-demo-pitch
-/web/ Next.js — frontend + backend de dominio
-/src/app/(hm|at|hrbp|entrevistador|candidato)/...
-/src/lib/{orquestador,sla,ia,acciones,auth,supabase}/
-/supabase/
-/migrations/*.sql esquema (fuente única de verdad)
-/seed.sql 10 candidatos reales + usuarios + vacantes de prueba
-/mcp-server/ servidor MCP de solo lectura (paquete aparte)
+- Node.js **20.12+**
+- Cuenta de Supabase (gratis)
+- (Opcional) API key de OpenAI, de Resend y credenciales OAuth de Google Cloud
 
+## Cuentas y credenciales
 
-## Cómo usar el ZIP
+- aileen.vargas@liverpool.com.mx
+- daniela.rios@liverpool.com.mx
+- monica.salinas@liverpool.com.mx
+- sofia.rodriguez@liverpool.com.mx
+- carlos.sanchez@liverpool.com.mx
+- juan.perez@liverpool.com.mx
+- admin@liverpool.com.mx
 
-1. **Base de datos:** crea un proyecto en Supabase y corre en orden las migraciones de
-   `supabase/migrations/`. Carga `supabase/seed.sql` (10 candidatos, usuarios, vacantes
-   en distintas etapas, alertas activas).
-2. **Variables de entorno:** dentro de `web/`, copia `.env.example` a `.env.local` y
-   completa mínimo:
+Contraseña:
+Liverhack2026!
 
+## 1. Base de datos (Supabase)
+
+1. Crea un proyecto en supabase.com.
+2. Aplica las migraciones **en este orden exacto** (SQL Editor del panel, o `supabase db push` si tienes la CLI conectada):
+
+supabase/migrations/20260923191654_init_schema.sql
+supabase/migrations/20260923204457_estado_proceso_vacantes.sql
+supabase/migrations/20260923221237_campos_constraints_ia.sql
+supabase/migrations/20260924120000_google_conexiones.sql
+
+3. Carga `supabase/seed.sql` **después** de las 4 migraciones (10 candidatos, usuarios, vacantes y notificaciones de prueba).
+
+## 2. Variables de entorno
+
+```bash
+cd web
+cp .env.example .env.local
+```
+
+Edita `web/.env.local`:
+
+```bash
+# Supabase — obligatorias para levantar la app
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-3. **Instalar y correr:**
-```bash
-   cd web
-   npm install
-   npm run dev
+# IA — sin esto la app levanta, pero toda función de IA
+# (carga de CV, ficha automática, comparativa, asistente del HM) falla al usarse
+OPENAI_API_KEY=
+
+# Correo real (opcional)
+RESEND_API_KEY=
+EMAIL_FROM="LivHire <onboarding@resend.dev>"
+
+# Google Calendar real (opcional)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/google/callback
+GOOGLE_CALENDAR_SEND_UPDATES=none
+
+# Gobernanza
+MAX_USD_DIA=10
+ACTIONS_MODE=mock   # "real" para correo/calendario reales; requiere las llaves de arriba
 ```
-4. **Usuarios de prueba:** sincroniza el seed con Supabase Auth:
+
+Todas las llaves y URLs (Supabase, OpenAI, Resend, Google) se obtienen desde el panel de
+cada servicio: Supabase → Project Settings → API; OpenAI → platform.openai.com/api-keys;
+Resend → resend.com/api-keys; Google → Google Cloud Console → credenciales OAuth 2.0
+(agrega `http://localhost:3000/api/google/callback` como Redirect URI autorizado).
+
+## 3. Instalar y correr
+
 ```bash
-   npm run seed:auth
+cd web
+npm install
+npm run dev
 ```
-   Contraseña común: `Liverhack2026!` (configurable con `DEMO_PASSWORD`).
-   Ej.: `aileen.vargas@liverpool.com.mx` → tablero HM;
-   `monica.salinas@liverpool.com.mx` → tablero HRBP.
-5. **(Opcional) Verificar el dominio de proceso sin UI:**
+
+Abre `http://localhost:3000`.
+
+## 4. Usuarios de prueba (Supabase Auth)
+
 ```bash
-   npm run verify:proceso
+npm run seed:auth
 ```
-6. **(Opcional) Acciones reales:** agrega `OPENAI_API_KEY`, `RESEND_API_KEY` y las
-   credenciales de Google Cloud (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `GOOGLE_REDIRECT_URI`) y pon `ACTIONS_MODE=real`. Sin esto, el sistema sigue
-   funcionando en modo simulado sin romper el flujo.
-7. **(Opcional) Servidor MCP:**
+
+Sincroniza los `usuarios` del seed con Supabase Auth. Contraseña común: `Liverhack2026!`
+(cámbiala con `DEMO_PASSWORD=... npm run seed:auth`).
+
+- `aileen.vargas@liverpool.com.mx` → tablero HM
+- `monica.salinas@liverpool.com.mx` → tablero HRBP
+
+## 5. (Opcional) Preparar el camino feliz de la demo
+
 ```bash
-   cd mcp-server
-   npm install
-   npm run build
-   npm run token   # genera MCP_AUTH_TOKEN y su SHA-256
+npm run seed:demo
 ```
-   Copia `.env.example` a `.env`, completa credenciales de Supabase y el hash del
-   token, y conéctalo desde `claude_desktop_config.json` (ver `mcp-server/README.md`
-   para el bloque exacto).
 
-## Reglas de oro (no se rompen)
+Deja una vacante en la compuerta `ESPERANDO_HM_DECIDE_FINALISTA` con pool listo, para
+que el HM tenga algo real que decidir sin correr todo el flujo a mano.
 
-1. El humano decide lo irreversible; toda decisión lleva justificación obligatoria.
-2. Cero ghosting: cada cambio de etapa notifica al candidato.
-3. Candado de posición: sin posición autorizada no hay proceso.
-4. Trazabilidad total en `audit_log` (append-only).
-5. Ninguna afirmación de IA sin cita de origen.
-6. Evaluación ciega a datos demográficos, con `fairness_report`.
+## 6. (Opcional) Verificar el dominio de proceso sin UI
 
-## Estado del prototipo
+```bash
+npm run verify:proceso               # corre y limpia la vacante de prueba
+npm run verify:proceso -- --conservar   # la deja para inspeccionarla
+```
 
-Núcleo P0 (auth+roles, candado, orquestador 6 etapas, SLA+semáforos, comparativa con IA,
-entrevistas en tiempo real, notificaciones, asistente-chat del HM) más gran parte de P1
-(agente de alineación, feedback por lote, sugeridor de vacantes, reactivador, acciones
-reales de Calendar/correo) construidos y probados; P2 (servidor MCP) también construido
-y documentado.
+## 7. (Opcional) Conectar Google Calendar real
 
-## Equipo
+Con `ACTIONS_MODE=real` y las credenciales de Google en `.env.local`, el usuario AT debe
+además conectar su cuenta desde `/at/entrevistas` (flujo OAuth) para que las entrevistas
+se agenden como eventos reales. Sin conexión, caen a modo interno automáticamente.
 
-División en 2 dominios de backend + sus pantallas: **Dominio Proceso** (flujo, SLA,
-gobernanza) y **Dominio Inteligencia** (IA de candidatos), integrando sobre un esquema y
-contratos acordados desde el día 0.
+## 8. (Opcional) Servidor MCP para Claude Desktop
+
+```bash
+cd mcp-server
+npm install
+npm run build      # requiere web/ en el mismo checkout (compila ../web/src)
+npm run token       # imprime MCP_AUTH_TOKEN y su SHA-256
+cp .env.example .env
+```
+
+Edita `mcp-server/.env`:
+
+```bash
+MCP_SUPABASE_URL=
+MCP_SUPABASE_SERVICE_KEY=
+MCP_AUTH_TOKEN_SHA256=
+```
+
+Conéctalo desde `claude_desktop_config.json` (Settings → Developer → Edit Config en
+Claude Desktop) con el bloque `mcpServers` documentado en `mcp-server/README.md`.
+Reinicia Claude Desktop por completo para que cargue la herramienta.
+
+## Comandos disponibles (`web/`)
+
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Servidor de desarrollo en `localhost:3000` |
+| `npm run build` | Build de producción |
+| `npm run lint` | ESLint |
+| `npm run seed:auth` | Sincroniza usuarios del seed con Supabase Auth |
+| `npm run seed:demo` | Prepara la vacante de demo en su compuerta |
+| `npm run verify:proceso` | Prueba end-to-end del orquestador sin UI |
+
+## Comandos disponibles (`mcp-server/`)
+
+| Comando | Qué hace |
+|---|---|
+| `npm run build` | Compila el servidor (incluye lógica de `web/src`) |
+| `npm run token` | Genera un `MCP_AUTH_TOKEN` nuevo y su hash |
+| `npm run probar` | Prueba de humo: arranca por stdio y llama a las 4 herramientas |
+| `npm start` | Corre `dist/index.js` |
