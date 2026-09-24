@@ -4,19 +4,34 @@ import Link from "next/link";
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, Send, Sparkles } from "lucide-react";
 import { preguntarAsistente } from "@/lib/actions/asistente";
+import type { RolUsuario } from "@/lib/supabase/types";
 
 type Mensaje =
   | { de: "hm"; texto: string }
   | { de: "ia"; texto: string; enlaces: { titulo: string; href: string }[]; respaldo: boolean }
   | { de: "error"; texto: string };
 
-const SUGERIDAS = ["¿Qué tengo que hacer hoy?", "¿Cuál va más atrasada?", "¿Cuántas están en riesgo?", "¿Quién bloquea la de Backend?"];
+// Sugerencias e introducción por rol: el alcance de los datos lo decide el servidor.
+const SUGERIDAS: Record<RolUsuario, string[]> = {
+  hm: ["¿Qué tengo que hacer hoy?", "¿Cuál va más atrasada?", "¿Cuántas están en riesgo?", "¿Quién bloquea la de Backend?"],
+  at: ["¿Qué tengo que hacer hoy?", "¿Qué vacantes dependen de mí?", "¿Cuántos avisos tengo por aprobar?", "¿Cuál va más atrasada?"],
+  hrbp: ["¿Qué tengo que hacer hoy?", "¿Cuántas vacantes están en riesgo?", "¿Quién está bloqueando más procesos?", "¿Cuál va más atrasada?"],
+  admin: ["¿Cuántas vacantes están en riesgo?", "¿Quién está bloqueando más procesos?", "¿Cuál va más atrasada?"],
+  entrevistador: [],
+};
+const INTRO: Record<RolUsuario, string> = {
+  hm: "Reviso tus vacantes, compuertas y SLA reales y te digo qué hacer primero o lo que me preguntes.",
+  at: "Reviso las vacantes que atiendes: etapas, SLA, candidatos y avisos por aprobar. Pregúntame lo que necesites.",
+  hrbp: "Reviso las vacantes de tu área: SLA, quién bloquea, fechas de cobertura y decisiones. Pregúntame lo que necesites.",
+  admin: "Reviso todas las vacantes activas: SLA, quién bloquea y fechas de cobertura. Pregúntame lo que necesites.",
+  entrevistador: "",
+};
 
 /**
- * Chat del asistente del HM (agente 8). Solo lee y guía; no ejecuta acciones.
+ * Chat de Liv (agente 8) para HM, AT, HRBP y admin. Solo lee y guía; no ejecuta acciones.
  * `semilla` permite que otra pantalla dispare una pregunta (cambia `n` para repetirla).
  */
-export function ChatAsistenteHM({ semilla }: { semilla?: { texto: string; n: number } | null }) {
+export function ChatAsistenteHM({ rol = "hm", semilla }: { rol?: RolUsuario; semilla?: { texto: string; n: number } | null }) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [texto, setTexto] = useState("");
   const [pensando, setPensando] = useState(false);
@@ -73,11 +88,10 @@ export function ChatAsistenteHM({ semilla }: { semilla?: { texto: string; n: num
         {mensajes.length === 0 && (
           <div className="animate-rise space-y-3">
             <div className="rounded-2xl rounded-tl-md bg-stone-900/[0.04] px-4 py-3 text-[13.5px] leading-relaxed text-stone-700">
-              Hola. Reviso tus vacantes, compuertas y SLA reales y te digo <strong>qué hacer primero</strong>. Solo leo y
-              ordeno: las decisiones siempre son tuyas.
+              Hola. {INTRO[rol]} Solo leo y ordeno: las decisiones siempre son tuyas.
             </div>
             <div className="flex flex-wrap gap-2">
-              {SUGERIDAS.map((s, i) => (
+              {SUGERIDAS[rol].map((s, i) => (
                 <button
                   key={s}
                   type="button"
