@@ -51,6 +51,7 @@ export type ResultadoAgendar =
 const AVISO_INTERNO: Record<string, string | null> = {
   actions_mode: null, // modo demo/mock: agenda interna esperada, sin aviso
   sin_credenciales: null,
+  sin_tabla: "Se guardó en LivHire. Google Calendar no está disponible: falta la tabla google_conexiones en la base.",
   sin_conexion: "Se guardó en LivHire. Conecta Google Calendar para crear también el evento en tu calendario.",
 };
 
@@ -134,12 +135,23 @@ export async function agendarEntrevista(entrada: z.input<typeof Entrada>): Promi
       modo: cal.modo,
       ...(cal.ok && cal.modo === "real" ? { event_id: cal.eventId, html_link: cal.htmlLink } : {}),
       ...(cal.ok && cal.modo === "interno" ? { motivo_interno: cal.motivo } : {}),
+      ...(!cal.ok ? { calendar_error: cal.error } : {}),
     },
   });
+  if (!cal.ok) {
+    // Google falló: la entrevista queda en modo interno; el fallo queda aparte en el audit.
+    await registrarAuditSeguro({
+      actor,
+      accion: "agendar_calendar_fallo",
+      entidad: "entrevistas",
+      entidad_id: entrevistaId,
+      detalle: { error: cal.error, detalle: cal.detalle, reconectar: cal.reconectar },
+    });
+  }
 
   revalidatePath("/at/entrevistas");
   revalidatePath("/entrevistador");
   if (cal.ok && cal.modo === "real") return { ok: true, entrevistaId, modo: "real", htmlLink: cal.htmlLink };
   if (cal.ok) return { ok: true, entrevistaId, modo: "interno", aviso: AVISO_INTERNO[cal.motivo] ?? null };
-  return { ok: true, entrevistaId, modo: "interno", aviso: `Se guardó en LivHire, pero no en Google Calendar: ${cal.error}` };
+  return { ok: true, entrevistaId, modo: "interno", aviso: `Se guardó en LivHire con su fecha, pero no en Google Calendar: ${cal.error}` };
 }

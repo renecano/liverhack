@@ -110,6 +110,11 @@ export async function clienteDeUsuario(usuarioId: string): Promise<OAuth2Client 
   return c;
 }
 
+/** Borra la conexión local sin llamar a Google (p. ej. el refresh_token ya fue revocado). */
+export async function olvidarConexion(usuarioId: string): Promise<void> {
+  await createAdminClient().from(TABLA).delete().eq("usuario_id", usuarioId);
+}
+
 /** Borra la conexión (y revoca el token en Google si se puede). */
 export async function desconectar(usuarioId: string): Promise<void> {
   const db = createAdminClient();

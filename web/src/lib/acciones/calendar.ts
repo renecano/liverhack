@@ -1,5 +1,5 @@
 import "server-only";
-import { clienteDeUsuario, googleConfigurado } from "./google";
+import { clienteDeUsuario, estadoConexion, googleConfigurado, olvidarConexion } from "./google";
 
 // Acción real de calendario (P1) con degradación elegante a modo interno, mismo patrón
 // que email.ts:
@@ -23,11 +23,11 @@ export interface EventoCalendario {
   invitados: { email: string; nombre?: string }[];
 }
 
-export type MotivoInterno = "actions_mode" | "sin_credenciales" | "sin_conexion";
+export type MotivoInterno = "actions_mode" | "sin_credenciales" | "sin_tabla" | "sin_conexion";
 export type ResultadoCalendario =
   | { ok: true; modo: "real"; eventId: string; htmlLink: string | null }
   | { ok: true; modo: "interno"; motivo: MotivoInterno }
-  | { ok: false; modo: "interno"; error: string; detalle: string };
+  | { ok: false; modo: "interno"; error: string; detalle: string; reconectar: boolean };
 
 /** ¿Se intentará crear el evento real? (para mostrarlo en la UI antes de agendar). */
 export function calendarioReal(): boolean {
@@ -38,6 +38,14 @@ export function calendarioReal(): boolean {
 // que parecen reales). GOOGLE_CALENDAR_SEND_UPDATES=all los activa.
 function enviarInvitaciones(): "all" | "none" {
   return process.env.GOOGLE_CALENDAR_SEND_UPDATES === "all" ? "all" : "none";
+}
+
+/** ¿El refresh_token ya no sirve (expiró o fue revocado)? Hay que volver a conectar. */
+export function tokenInvalido(err: unknown): boolean {
+  const e = err as { message?: string; response?: { status?: number; data?: { error?: string | { message?: string } } } };
+  const datos = e?.response?.data?.error;
+  const texto = `${typeof datos === "string" ? datos : (datos?.message ?? "")} ${e?.message ?? ""}`.toLowerCase();
+  return texto.includes("invalid_grant") || texto.includes("expired or revoked") || e?.response?.status === 401;
 }
 
 /** Traduce el error de Google a un mensaje para el AT. */
@@ -59,6 +67,10 @@ export function motivoGoogle(err: unknown): string {
 export async function agendarEnCalendar(ev: EventoCalendario): Promise<ResultadoCalendario> {
   if (process.env.ACTIONS_MODE !== "real") return { ok: true, modo: "interno", motivo: "actions_mode" };
   if (!googleConfigurado()) return { ok: true, modo: "interno", motivo: "sin_credenciales" };
+
+  const conexion = await estadoConexion(ev.organizadorId);
+  if (conexion.estado === "sin_tabla") return { ok: true, modo: "interno", motivo: "sin_tabla" };
+  if (conexion.estado !== "conectado") return { ok: true, modo: "interno", motivo: "sin_conexion" };
 
   let reloj: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -85,12 +97,15 @@ export async function agendarEnCalendar(ev: EventoCalendario): Promise<Resultado
       limite,
     ]);
     const id = r.data.id;
-    if (!id) return { ok: false, modo: "interno", error: "Google no devolvió el evento creado.", detalle: "sin id" };
+    if (!id) return { ok: false, modo: "interno", error: "Google no devolvió el evento creado.", detalle: "sin id", reconectar: false };
     return { ok: true, modo: "real", eventId: id, htmlLink: r.data.htmlLink ?? null };
   } catch (err) {
     const detalle = err instanceof Error ? err.message : String(err);
     console.error("[calendar] no se pudo crear el evento:", detalle);
-    return { ok: false, modo: "interno", error: motivoGoogle(err), detalle: detalle.slice(0, 300) };
+    // Token muerto: se olvida la conexión para que la pantalla pida reconectar.
+    const reconectar = tokenInvalido(err);
+    if (reconectar) await olvidarConexion(ev.organizadorId).catch(() => {});
+    return { ok: false, modo: "interno", error: motivoGoogle(err), detalle: detalle.slice(0, 300), reconectar };
   } finally {
     clearTimeout(reloj);
   }

@@ -42,6 +42,8 @@ transpilar(path.join(src, "lib", "ia"), path.join(js, "lib", "ia"));
 transpilar(path.join(src, "lib", "supabase", "admin.ts"), path.join(js, "lib", "supabase", "admin.ts"));
 // estados.ts (Persona A): lo usa el asistente del HM (INFO_ESTADO, NOMBRE_ETAPA).
 transpilar(path.join(src, "lib", "orquestador", "estados.ts"), path.join(js, "lib", "orquestador", "estados.ts"));
+// acciones reales (calendar.ts / google.ts): sus pruebas simulan Supabase y Google con fetch.
+transpilar(path.join(src, "lib", "acciones"), path.join(js, "lib", "acciones"));
 
 // Gancho: "@/x" → <salida>/src/x
 const gancho = path.join(salida, "alias.cjs");
