@@ -15,12 +15,14 @@ import { temasProhibidos } from "./temas-prohibidos";
 // invente datos. Si el modelo falla o tarda, responde un texto de respaldo con los
 // mismos datos: el HM nunca se queda sin respuesta.
 
-export const VERSION_PROMPT_ASISTENTE = "asistente-hm-v1";
+export const VERSION_PROMPT_ASISTENTE = "asistente-hm-v2";
 // Baja pero no 0: texto breve y natural; el contenido lo acota la validación.
 const TEMPERATURA_ASISTENTE = 0.2;
 const LIMITE_ASISTENTE_MS = 15_000;
-const MAX_PALABRAS = 140;
+const MAX_PALABRAS = 160;
 const MAX_ITEMS = 8;
+// Mínimo de pendientes que la respuesta debe cubrir (los más urgentes, en orden).
+const MIN_CITADOS = 3;
 
 export interface EntradaAsistente {
   pregunta: string;
@@ -110,7 +112,7 @@ Respondes su pregunta usando SOLO la lista de pendientes que te doy, que YA est�
 
 Reglas:
 - Español, tono ejecutivo, directo y breve (máximo ${MAX_PALABRAS} palabras). Trato de "tú".
-- Respeta el orden de la lista: empieza por item-1. No reordenes ni inventes pendientes.
+- Respeta el orden de la lista: empieza por item-1 y cubre como mínimo los ${MIN_CITADOS} primeros (o todos si hay menos), uno por frase. No reordenes ni inventes pendientes.
 - Menciona cada pendiente por su nombre exacto (el título) y di qué hacer en una frase.
 - No inventes cifras, fechas ni nombres: usa solo los datos de cada item.
 - Solo guías: no digas que ya hiciste, aprobaste, decidiste o enviaste algo.
@@ -133,6 +135,9 @@ function validar(crudo: z.infer<typeof Salida>, items: Item[], hechos: string) {
   const posiciones = citados.map((c) => ids.indexOf(c));
   if (posiciones.some((p, i) => i > 0 && p < posiciones[i - 1])) errores.push("Respeta el orden de prioridad (item-1 primero)");
   if (items.length && citados[0] !== "item-1") errores.push("Empieza por item-1, el pendiente más urgente");
+  const minimo = Math.min(MIN_CITADOS, items.length);
+  const faltan = ids.slice(0, minimo).filter((id) => !citados.includes(id));
+  if (faltan.length) errores.push(`Cubre al menos los ${minimo} pendientes más urgentes; faltan: ${faltan.join(", ")}`);
   for (const c of citados) {
     const it = items.find((x) => x.id === c);
     if (it && !nr.includes(normalizar(it.titulo))) errores.push(`Menciona "${it.titulo}" por su nombre exacto`);
