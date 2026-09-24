@@ -220,6 +220,8 @@ export interface ResumenEnvio {
   simuladas: number;
   /** aprobadas pero cuyo envío de correo falló (quedan en 'aprobada'). */
   fallidas: number;
+  /** motivo de cada envío fallido, para mostrarlo en la UI. */
+  errores: { id: string; error: string }[];
 }
 
 function asuntoNotificacion(tipo: TipoNotificacion): string {
@@ -239,39 +241,47 @@ function asuntoNotificacion(tipo: TipoNotificacion): string {
  * hay RESEND_API_KEY y ACTIONS_MODE!='mock'; simulado si no) y solo marca 'enviada'
  * cuando el envío tuvo éxito. Las de canal 'portal' se entregan in-app. Nada en
  * 'borrador' se envía; cada envío/fallo queda en audit_log con el modo y el id del mensaje.
+ * Las que ya estaban en 'aprobada' (un envío anterior falló) se reintentan sin volver a
+ * aprobarse. Un correo fallido no rompe el lote: se cuenta y se devuelve su motivo.
  */
 export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultado<ResumenEnvio>> {
   const s = await sesion();
   if (!s) return NO_AUTENTICADO;
   if (!['hm', 'hrbp', 'at', 'admin'].includes(s.usuario.rol)) return NO_AUTORIZADO;
   const validos = [...new Set(ids)].filter((notificacionId) => id.safeParse(notificacionId).success);
-  const vacio: ResumenEnvio = { aprobadas: 0, enviadas: 0, reales: 0, simuladas: 0, fallidas: 0 };
+  const vacio: ResumenEnvio = { aprobadas: 0, enviadas: 0, reales: 0, simuladas: 0, fallidas: 0, errores: [] };
   if (validos.length === 0) return { ok: true, data: vacio };
 
   try {
     // La lectura con el cliente de sesión limita el lote a notificaciones visibles por RLS.
-    const borradores = revisar<Notificacion[]>(
-      await s.supabase.from('notificaciones').select('*').in('id', validos).eq('estatus', 'borrador'),
-      'borradores visibles',
+    const visibles = revisar<Notificacion[]>(
+      await s.supabase.from('notificaciones').select('*').in('id', validos).in('estatus', ['borrador', 'aprobada']),
+      'notificaciones visibles',
     );
-    if (borradores.length === 0) return { ok: true, data: vacio };
+    if (visibles.length === 0) return { ok: true, data: vacio };
+    const borradores = visibles.filter((n) => n.estatus === 'borrador');
+    const reintentos = visibles.filter((n) => n.estatus === 'aprobada');
 
     const db = createAdminClient();
     const actor = { id: s.usuario.id, rol: s.usuario.rol };
-    const aprobadas = revisar<Notificacion[]>(
-      await db
-        .from('notificaciones')
-        .update({ estatus: 'aprobada', aprobada_por: s.usuario.id })
-        .in('id', borradores.map((n) => n.id))
-        .select(),
-      'aprobar notificaciones',
-    );
-    for (const notificacion of aprobadas) {
+    const recienAprobadas = borradores.length
+      ? revisar<Notificacion[]>(
+          await db
+            .from('notificaciones')
+            .update({ estatus: 'aprobada', aprobada_por: s.usuario.id })
+            .in('id', borradores.map((n) => n.id))
+            .eq('estatus', 'borrador')
+            .select(),
+          'aprobar notificaciones',
+        )
+      : [];
+    for (const notificacion of recienAprobadas) {
       await registrarAudit(db, actor, 'aprobar_notificacion_lote', 'notificaciones', notificacion.id, {
         estatus_anterior: 'borrador',
         estatus_nuevo: 'aprobada',
       });
     }
+    const aprobadas = [...recienAprobadas, ...reintentos];
 
     // Resolver el correo de cada destinatario (polimórfico: candidato o usuario).
     const correo = aprobadas.filter((n) => n.canal === 'correo');
@@ -288,7 +298,7 @@ export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultad
       us.forEach((u) => emailPorId.set(u.id, u.email));
     }
 
-    const resumen: ResumenEnvio = { aprobadas: aprobadas.length, enviadas: 0, reales: 0, simuladas: 0, fallidas: 0 };
+    const resumen: ResumenEnvio = { aprobadas: recienAprobadas.length, enviadas: 0, reales: 0, simuladas: 0, fallidas: 0, errores: [] };
     const enviadasIds: string[] = [];
 
     // Canal portal: entrega in-app, no requiere correo.
@@ -305,6 +315,7 @@ export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultad
       const to = emailPorId.get(n.destinatario_id);
       if (!to) {
         resumen.fallidas += 1;
+        resumen.errores.push({ id: n.id, error: 'el destinatario no tiene correo registrado' });
         await registrarAudit(db, actor, 'enviar_notificacion_fallo', 'notificaciones', n.id, {
           canal: 'correo', motivo: 'sin_email_destinatario', destinatario_tipo: n.destinatario_tipo, destinatario_id: n.destinatario_id,
         });
@@ -319,16 +330,18 @@ export async function aprobarLoteNotificaciones(ids: string[]): Promise<Resultad
           estatus_anterior: 'aprobada', estatus_nuevo: 'enviada', canal: 'correo', modo: r.modo, mensaje_id: r.id,
         });
       } else {
+        // Queda en 'aprobada' para reintentar; el lote sigue con las demás.
         resumen.fallidas += 1;
+        resumen.errores.push({ id: n.id, error: r.error ?? 'desconocido' });
         await registrarAudit(db, actor, 'enviar_notificacion_fallo', 'notificaciones', n.id, {
-          canal: 'correo', modo: r.modo, error: r.error ?? 'desconocido',
+          canal: 'correo', modo: r.modo, error: r.error ?? 'desconocido', estatus: 'aprobada',
         });
       }
     }
 
     if (enviadasIds.length) {
       revisar<Notificacion[]>(
-        await db.from('notificaciones').update({ estatus: 'enviada' }).in('id', enviadasIds).select(),
+        await db.from('notificaciones').update({ estatus: 'enviada' }).in('id', enviadasIds).eq('estatus', 'aprobada').select(),
         'marcar enviadas',
       );
     }
