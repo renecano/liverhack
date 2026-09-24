@@ -4,5 +4,5 @@ import { exigirRol } from '@/lib/auth/sesion';
 
 export default async function EntrevistadorLayout({ children }: { children: ReactNode }) {
   const usuario = await exigirRol('entrevistador');
-  return <AppShell nombre={usuario.nombre} rol={usuario.rol}>{children}</AppShell>;
+  return <AppShell nombre={usuario.nombre} rol={usuario.rol} email={usuario.email}>{children}</AppShell>;
 }

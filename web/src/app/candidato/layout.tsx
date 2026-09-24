@@ -13,5 +13,5 @@ export default async function CandidatoLayout({ children }: { children: ReactNod
   const { data: perfil } = await supabase.from('usuarios').select('nombre, rol').eq('id', user.id).maybeSingle();
   const nombre = perfil?.nombre ?? user.email ?? 'Candidato';
   const rolLabel = perfil ? NOMBRE_ROL[perfil.rol as RolUsuario] : 'Candidato';
-  return <ShellBase nombre={nombre} rolLabel={rolLabel} inicio="/candidato">{children}</ShellBase>;
+  return <ShellBase nombre={nombre} rolLabel={rolLabel} email={user.email} inicio="/candidato">{children}</ShellBase>;
 }

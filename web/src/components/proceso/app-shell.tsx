@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { RolUsuario } from '@/lib/supabase/types';
 import { Copiloto } from '@/components/copiloto/Copiloto';
 import { LogoutButton } from './logout-button';
+import { MenuUsuario } from './menu-usuario';
 import { NavRol, type ItemNav } from './nav-rol';
 import { NotificationBell } from './NotificationBell';
 
@@ -48,14 +49,6 @@ const NAV: Record<RolUsuario, ItemNav[]> = {
   entrevistador: [{ href: '/entrevistador', label: 'Mis entrevistas' }],
 };
 
-const iniciales = (nombre: string) =>
-  nombre
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join('');
-
 export function Marca({ className = '' }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
@@ -70,7 +63,7 @@ export function Marca({ className = '' }: { className?: string }) {
 }
 
 /** Cabecera común a todas las vistas autenticadas: identidad + notificaciones + cerrar sesión. */
-export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra, rol }: { children: ReactNode; nombre: string; rolLabel: string; inicio: string; nav?: ReactNode; extra?: ReactNode; rol?: RolUsuario }) {
+export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra, rol, email }: { children: ReactNode; nombre: string; rolLabel: string; inicio: string; nav?: ReactNode; extra?: ReactNode; rol?: RolUsuario; email?: string | null }) {
   return (
     <div className="ambient min-h-screen text-stone-900">
       <header className="glass sticky top-0 z-40 border-b hairline">
@@ -86,9 +79,7 @@ export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra, rol 
               <p className="text-[13px] font-semibold">{nombre}</p>
               <p className="text-[11px] font-medium uppercase tracking-[.14em] text-stone-400">{rolLabel}</p>
             </div>
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-950 text-[12px] font-semibold text-white ring-2 ring-white">
-              {iniciales(nombre) || '·'}
-            </span>
+            <MenuUsuario nombre={nombre} rolLabel={rolLabel} email={email} />
             <NotificationBell rol={rol} />
             <LogoutButton />
           </div>
@@ -102,13 +93,14 @@ export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra, rol 
 }
 
 /** Shell para roles internos (hm, hrbp, at, entrevistador, admin). */
-export function AppShell({ children, nombre, rol }: { children: ReactNode; nombre: string; rol: RolUsuario }) {
+export function AppShell({ children, nombre, rol, email }: { children: ReactNode; nombre: string; rol: RolUsuario; email?: string | null }) {
   const inicio = INICIO[rol] ?? '/';
   return (
     <ShellBase
       nombre={nombre}
       rolLabel={NOMBRE_ROL[rol]}
       rol={rol}
+      email={email}
       inicio={inicio}
       nav={<NavRol items={NAV[rol]} />}
       extra={<Copiloto rol={rol} nombre={nombre} />}
