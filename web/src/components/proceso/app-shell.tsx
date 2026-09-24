@@ -69,7 +69,7 @@ export function Marca({ className = '' }: { className?: string }) {
 }
 
 /** Cabecera común a todas las vistas autenticadas: identidad + notificaciones + cerrar sesión. */
-export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra }: { children: ReactNode; nombre: string; rolLabel: string; inicio: string; nav?: ReactNode; extra?: ReactNode }) {
+export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra, rol }: { children: ReactNode; nombre: string; rolLabel: string; inicio: string; nav?: ReactNode; extra?: ReactNode; rol?: RolUsuario }) {
   return (
     <div className="ambient min-h-screen text-stone-900">
       <header className="glass sticky top-0 z-40 border-b hairline">
@@ -88,7 +88,7 @@ export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra }: { 
             <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-950 text-[12px] font-semibold text-white ring-2 ring-white">
               {iniciales(nombre) || '·'}
             </span>
-            <NotificationBell />
+            <NotificationBell rol={rol} />
             <LogoutButton />
           </div>
         </div>
@@ -107,6 +107,7 @@ export function AppShell({ children, nombre, rol }: { children: ReactNode; nombr
     <ShellBase
       nombre={nombre}
       rolLabel={NOMBRE_ROL[rol]}
+      rol={rol}
       inicio={inicio}
       nav={<NavRol items={NAV[rol]} />}
       extra={<Copiloto rol={rol} nombre={nombre} />}

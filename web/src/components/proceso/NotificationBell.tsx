@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useId } from 'react';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import type { RolUsuario } from '@/lib/supabase/types';
 import {
   Bell,
   AlertTriangle,
@@ -24,7 +26,13 @@ export interface NotificacionInterna {
   leida: boolean;
   accionTexto?: string;
   accionHref?: string;
+  /** Roles a los que aplica (las simuladas). Sin roles: a todos. */
+  roles?: RolUsuario[];
 }
+
+// Inicio de cada rol: un aviso nunca debe mandar a la pantalla de otro rol (la
+// ruta redirige al inicio propio y el clic "no lleva a nada").
+const INICIO_ROL: Record<RolUsuario, string> = { hm: '/hm', at: '/at', hrbp: '/hrbp', admin: '/hrbp', entrevistador: '/entrevistador' };
 
 // Datos simulados en duro según especificaciones de negocio LivHire
 const NOTIFICACIONES_MOCK: NotificacionInterna[] = [
@@ -36,7 +44,8 @@ const NOTIFICACIONES_MOCK: NotificacionInterna[] = [
     tiempo: 'Hace 15 min',
     leida: false,
     accionTexto: 'Revisar vacante',
-    accionHref: '/hm',
+    accionHref: '/hm', // se ajusta al inicio de cada rol (ver avisosPara)
+    roles: ['hm', 'at', 'hrbp', 'admin'],
   },
   {
     id: 'notif-2',
@@ -47,16 +56,7 @@ const NOTIFICACIONES_MOCK: NotificacionInterna[] = [
     leida: false,
     accionTexto: 'Gestionar ofertas',
     accionHref: '/at',
-  },
-  {
-    id: 'notif-3',
-    tipo: 'evento',
-    titulo: 'Entrevista técnica en agenda',
-    mensaje: 'Entrevista técnica en 15 minutos con Ana López.',
-    tiempo: 'En 15 min',
-    leida: false,
-    accionTexto: 'Ir al Scorecard',
-    accionHref: '/entrevistador',
+    roles: ['at'],
   },
   {
     id: 'notif-4',
@@ -67,16 +67,76 @@ const NOTIFICACIONES_MOCK: NotificacionInterna[] = [
     leida: true,
     accionTexto: 'Ver sugerencias',
     accionHref: '/at/carga',
+    roles: ['at'],
   },
 ];
 
-export function NotificationBell({ className = '' }: { className?: string }) {
+/** Avisos simulados que aplican al rol, con enlaces a pantallas de ese rol. */
+function avisosPara(rol?: RolUsuario): NotificacionInterna[] {
+  if (!rol) return [];
+  return NOTIFICACIONES_MOCK.filter((n) => !n.roles || n.roles.includes(rol)).map((n) =>
+    n.id === 'notif-1' ? { ...n, accionHref: INICIO_ROL[rol] } : n,
+  );
+}
+
+const uno = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? (x[0] ?? null) : x);
+function cuando(iso: string): string {
+  const min = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (min >= 0 && min < 60) return `En ${Math.max(min, 1)} min`;
+  if (min >= 60 && min < 24 * 60) return `En ${Math.round(min / 60)} h`;
+  return new Date(iso).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Avisos REALES del entrevistador: sus entrevistas próximas y las que aún no califica,
+ * cada una con enlace a su scorecard (/entrevistador/[id]). Lee con la sesión (RLS).
+ */
+async function avisosEntrevistador(): Promise<NotificacionInterna[]> {
+  const sb = createClient();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return [];
+  const { data: mias } = await sb.from('entrevista_participantes').select('entrevista_id').eq('entrevistador_id', user.id);
+  const ids = (mias ?? []).map((m) => m.entrevista_id as string);
+  if (!ids.length) return [];
+  const { data } = await sb
+    .from('entrevistas')
+    .select('id, fecha, tipo, estatus, candidatos(nombre), vacantes(titulo), feedback_entrevista(entrevistador_id)')
+    .in('id', ids)
+    .neq('estatus', 'cancelada')
+    .order('fecha', { ascending: true });
+  type Fila = { id: string; fecha: string; tipo: string; estatus: string; candidatos: { nombre: string } | { nombre: string }[] | null; vacantes: { titulo: string } | { titulo: string }[] | null; feedback_entrevista: { entrevistador_id: string }[] };
+  const avisos: NotificacionInterna[] = [];
+  for (const f of (data ?? []) as Fila[]) {
+    const quien = `${uno(f.candidatos)?.nombre ?? 'Candidato'} · ${uno(f.vacantes)?.titulo ?? 'Vacante'}`;
+    const califique = f.feedback_entrevista.some((x) => x.entrevistador_id === user.id);
+    if (f.estatus === 'programada') {
+      avisos.push({ id: `ent-${f.id}`, tipo: 'evento', titulo: `Entrevista de ${f.tipo} en agenda`, mensaje: quien, tiempo: cuando(f.fecha), leida: false, accionTexto: 'Ir al scorecard', accionHref: `/entrevistador/${f.id}` });
+    } else if (!califique) {
+      avisos.push({ id: `cal-${f.id}`, tipo: 'accion_requerida', titulo: 'Calificación pendiente', mensaje: `Aún no calificas a ${quien}`, tiempo: cuando(f.fecha), leida: false, accionTexto: 'Calificar', accionHref: `/entrevistador/${f.id}` });
+    }
+  }
+  return avisos;
+}
+
+export function NotificationBell({ className = '', rol }: { className?: string; rol?: RolUsuario }) {
   const [abierto, setAbierto] = useState(false);
-  const [notificaciones, setNotificaciones] = useState<NotificacionInterna[]>(NOTIFICACIONES_MOCK);
+  const [notificaciones, setNotificaciones] = useState<NotificacionInterna[]>(() => (rol === 'entrevistador' ? [] : avisosPara(rol)));
   const [filtro, setFiltro] = useState<'todas' | 'no_leidas'>('todas');
   const panelRef = useRef<HTMLDivElement>(null);
   const botonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
+
+  // El entrevistador ve sus entrevistas reales en lugar de avisos simulados.
+  useEffect(() => {
+    if (rol !== 'entrevistador') return;
+    let vivo = true;
+    avisosEntrevistador()
+      .then((a) => vivo && setNotificaciones(a))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [rol]);
 
   const noLeidas = notificaciones.filter((n) => !n.leida);
   const totalNoLeidas = noLeidas.length;
