@@ -16,6 +16,8 @@ import css from "./BotonPersonalizarIA.module.css";
 export interface BotonPersonalizarIAProps {
   /** Id de la notificación o lista de ids (solo borradores a candidatos). */
   ids: string | string[];
+  /** Llamado al empezar (p. ej. para deshabilitar "Aprobar lote" mientras corre). */
+  onStart?: () => void;
   /** Llamado al terminar todas las filas, con el resumen. Úsalo para refrescar (p. ej. router.refresh()). */
   onDone?: (resumen: ResumenPersonalizacion) => void;
   /** Texto visible por fila; por defecto, el final del id. P. ej. { [id]: "Carlos Mendoza" }. */
@@ -28,6 +30,8 @@ export interface BotonPersonalizarIAProps {
   texto?: string;
   /** Llamadas en paralelo (1-4). Por defecto 2, para no saturar la cuota de OpenAI. */
   concurrencia?: number;
+  /** false = solo el resumen, sin la lista por fila (útil dentro de una fila). Por defecto true. */
+  mostrarDetalle?: boolean;
 }
 
 export type EstadoFila = "pendiente" | "procesando" | "personalizada" | "ya_no_borrador" | "error";
@@ -84,12 +88,14 @@ async function personalizarUno(id: string, dryRun: boolean): Promise<ResultadoFi
 
 export function BotonPersonalizarIA({
   ids,
+  onStart,
   onDone,
   etiquetas,
   dryRun = false,
   deshabilitado = false,
   texto = "Personalizar con IA",
   concurrencia = 2,
+  mostrarDetalle = true,
 }: BotonPersonalizarIAProps) {
   const lista = [...new Set(Array.isArray(ids) ? ids : [ids])].filter(Boolean);
   const [filas, setFilas] = useState<ResultadoFila[] | null>(null);
@@ -98,6 +104,7 @@ export function BotonPersonalizarIA({
   async function iniciar() {
     if (corriendo || lista.length === 0) return;
     setCorriendo(true);
+    onStart?.();
     const resultados: ResultadoFila[] = lista.map((id) => ({ id, estado: "pendiente" }));
     setFilas([...resultados]);
     const fijar = (i: number, f: ResultadoFila) => {
@@ -156,18 +163,20 @@ export function BotonPersonalizarIA({
               ? `${hechas} de ${total} procesadas`
               : `${cuenta("personalizada")} personalizada(s) · ${cuenta("ya_no_borrador")} ya no eran borrador · ${cuenta("error")} con error${dryRun ? " · prueba sin guardar" : ""}`}
           </p>
-          <ul className={css.lista}>
-            {filas.map((f) => (
-              <li key={f.id} className={css.fila}>
-                <span className={css.etiqueta} title={f.id}>
-                  {etiquetas?.[f.id] ?? `…${f.id.slice(-6)}`}
-                </span>
-                <span className={`${css.estado} ${CLASE_ESTADO[f.estado]}`} title={f.error}>
-                  {f.estado === "error" && f.error ? `${TEXTO_ESTADO.error}: ${f.error}` : TEXTO_ESTADO[f.estado]}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {mostrarDetalle && (
+            <ul className={css.lista}>
+              {filas.map((f) => (
+                <li key={f.id} className={css.fila}>
+                  <span className={css.etiqueta} title={f.id}>
+                    {etiquetas?.[f.id] ?? `…${f.id.slice(-6)}`}
+                  </span>
+                  <span className={`${css.estado} ${CLASE_ESTADO[f.estado]}`} title={f.error}>
+                    {f.estado === "error" && f.error ? `${TEXTO_ESTADO.error}: ${f.error}` : TEXTO_ESTADO[f.estado]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </div>
