@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { personalizarBorrador, personalizarSimulado, type ErrorPersonalizar } from "@/lib/ia/notificaciones";
 import { esPrueba } from "@/lib/ia/prueba";
-import { ROLES, sesionIA } from "@/lib/ia/sesion";
+import { ROLES, sesionIA } from "@/lib/ia/acceso";
 
 // Agente 5: reescribe con IA el texto de borradores que creó el orquestador.
 // { id } o { ids: [...] } (máx. 50). dry_run: genera y valida sin actualizar la fila.

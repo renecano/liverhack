@@ -7,10 +7,11 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enviarCorreo } from "@/lib/acciones/email";
-import type { Notificacion, RolUsuario, TipoDecision, TipoNotificacion } from "@/lib/supabase/types";
+import type { Notificacion, TipoDecision, TipoNotificacion } from "@/lib/supabase/types";
 import {
   abrirVacante as abrirVacanteOrq,
   ErrorProceso,
@@ -23,27 +24,14 @@ import {
 import { resumenVacantes, type ResumenVacante } from "@/lib/orquestador/resumen";
 import { DECISIONES } from "@/lib/orquestador/estados";
 import { registrarAudit, revisar } from "@/lib/orquestador/persistencia";
+import { sesion } from "@/lib/auth/sesion";
+import { sugerirVacantes } from "@/lib/ia";
 
 export type Resultado<T> =
   | { ok: true; data: T }
   | { ok: false; codigo: string; error: string };
 
 const id = z.guid();
-
-async function sesion() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: usuario } = await supabase
-    .from("usuarios")
-    .select("id, rol, activo")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!usuario?.activo) return null;
-  return { supabase, usuario: usuario as { id: string; rol: RolUsuario } };
-}
 
 async function puedeVerVacante(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -129,9 +117,49 @@ export async function registrarDecision(
       input.data.justificacion,
       { db: createAdminClient(), actor: { id: s.usuario.id, rol: "hm" } },
     );
+    if (data.sugerencias_solicitadas) {
+      // "Reemparejar": sugerirVacantes tarda 6-9 s. after() responde al HM de inmediato
+      // y calcula las sugerencias en segundo plano, sin afectar la decisión.
+      const { candidatoId: cid, vacanteId: vid } = input.data;
+      const decisionId = data.decision.id;
+      after(() => dispararSugerencias(cid, vid, decisionId, { id: s.usuario.id, rol: "hm" }));
+    }
     return { ok: true, data };
   } catch (e) {
     return fallo(e);
+  }
+}
+
+/**
+ * Segundo plano de "reemparejar": audita el disparo y llama al sugeridor (dominio IA).
+ * sugerirVacantes nunca lanza ({ ok } | { ok: false, error }); igual se protege todo
+ * con try/catch para que nada de esto pueda afectar la decisión ya registrada.
+ */
+async function dispararSugerencias(
+  candidatoId: string,
+  vacanteId: string,
+  decisionId: string,
+  actor: { id: string; rol: "hm" },
+): Promise<void> {
+  const db = createAdminClient();
+  try {
+    await registrarAudit(
+      db,
+      actor,
+      "disparar_sugerencias_vacante",
+      "candidatos",
+      candidatoId,
+      { origen_vacante_id: vacanteId, modo: "segundo_plano" },
+      decisionId,
+    );
+  } catch (e) {
+    console.error("[proceso] no se pudo auditar el disparo de sugerencias", e);
+  }
+  try {
+    const r = await sugerirVacantes(candidatoId, { vacanteOrigenId: vacanteId, actor });
+    if (!r.ok) console.warn(`[proceso] sugerencias no generadas para ${candidatoId}: ${r.error}`);
+  } catch (e) {
+    console.error("[proceso] fallo inesperado al sugerir vacantes", e);
   }
 }
 

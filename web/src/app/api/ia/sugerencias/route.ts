@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { esPrueba } from "@/lib/ia/prueba";
-import { NO_ENCONTRADO, ROLES, sesionIA, veCandidatoVacante } from "@/lib/ia/sesion";
+import { NO_ENCONTRADO, ROLES, sesionIA, veCandidatoVacante } from "@/lib/ia/acceso";
 import { sugerenciasGuardadasDe, sugerirVacantesDeProceso } from "@/lib/ia/sugeridor";
 
 // Sugerencias de vacantes para un candidato no seleccionado (agente 6).
