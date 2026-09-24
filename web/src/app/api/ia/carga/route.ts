@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ExtraccionInvalidaError } from "@/lib/ia/extractor";
 import { esPrueba } from "@/lib/ia/prueba";
 import { procesarCarga } from "@/lib/ia/servicio";
+import { NO_ENCONTRADO, ROLES, sesionIA } from "@/lib/ia/sesion";
 
 // Carga de candidato nuevo (vista AT): CV + evaluación → extractor → BD.
 export const maxDuration = 120;
@@ -28,6 +29,8 @@ const Formulario = z.object({
 const MAX_PDF = 10 * 1024 * 1024;
 
 export async function POST(req: Request) {
+  const s = await sesionIA(ROLES.cargarCandidatos);
+  if (!s.ok) return s.respuesta;
   const form = await req.formData();
   const campos = Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string"));
   const p = Formulario.safeParse(campos);
@@ -38,6 +41,9 @@ export async function POST(req: Request) {
     );
   }
   const f = p.data;
+  // La vacante debe ser visible para este AT (RLS: puede_ver_vacante).
+  const vac = await s.supabase.from("vacantes").select("id").eq("id", f.vacante_id).maybeSingle();
+  if (!vac.data) return NO_ENCONTRADO();
 
   const archivo = form.get("cv_pdf");
   let cvPdf: Uint8Array | null = null;
@@ -70,8 +76,9 @@ export async function POST(req: Request) {
       cvPdf,
       cvTexto: f.cv_texto ?? null,
       evaluacion: f.evaluacion_resumen ? { tipo: f.evaluacion_tipo, resumen: f.evaluacion_resumen } : null,
-      // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
-      actor: { id: null, rol: null },
+      // Escribe con el rol de servicio: el alta es atómica (si la IA o Storage fallan,
+      // se revierte con un DELETE que RLS solo permite a admin).
+      actor: s.actor,
       prueba: esPrueba(req),
     });
     return Response.json({

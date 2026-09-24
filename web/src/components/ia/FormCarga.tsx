@@ -12,7 +12,7 @@ const campo =
   "w-full rounded-sm border border-[var(--lh-rule)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--lh-ink)]";
 const etiqueta = "mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--lh-muted)]";
 
-export function FormCarga({ vacantes }: { vacantes: { id: string; titulo: string }[] }) {
+export function FormCarga({ vacantes, hrefLista }: { vacantes: { id: string; titulo: string }[]; hrefLista: string }) {
   const [enviando, setEnviando] = useState(false);
   const [resp, setResp] = useState<Respuesta | null>(null);
 
@@ -171,7 +171,7 @@ export function FormCarga({ vacantes }: { vacantes: { id: string; titulo: string
             </div>
             <p>{resp.resultado.ficha.descripcion}</p>
             <Link
-              href={`/hm/candidatos`}
+              href={hrefLista}
               className="inline-block rounded-sm border border-[var(--lh-ink)] px-4 py-2 font-medium hover:bg-[var(--lh-ink)] hover:text-white"
             >
               Ver en la lista →

@@ -15,6 +15,7 @@ import { clasificarNoNegociable } from "./obtenible";
 import { crearVerificadorCitas, normalizar, REGLAS_SEMAFORO, validarSemaforo } from "./semaforo";
 import { conLimite, clasificarError, detalleSeguro, type ErrorGenerico, type Ejecucion } from "./seguro";
 import { registrarAuditSeguro, type Actor, type OpcionesAudit } from "./servicio";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { temasProhibidos } from "./temas-prohibidos";
 
@@ -261,8 +262,8 @@ export interface SugerenciaGuardada {
 }
 
 // Lectura sin regenerar: todas las sugerencias del candidato (incluidas las ya decididas).
-export async function sugerenciasGuardadasDe(candidatoVacanteId: string) {
-  const sb = createAdminClient();
+// Lectura para la UI con el cliente de SESIÓN: RLS (sugerencias_select) decide.
+export async function sugerenciasGuardadasDe(sb: SupabaseClient, candidatoVacanteId: string) {
   const cv = await sb.from("candidato_vacante").select("candidato_id").eq("id", candidatoVacanteId).maybeSingle();
   if (cv.error) throw new Error(cv.error.message);
   if (!cv.data) return { error: "no_encontrado" as const };

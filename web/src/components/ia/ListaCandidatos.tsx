@@ -32,7 +32,8 @@ function Barra({ valor }: { valor: number | null }) {
   );
 }
 
-export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
+// base: ruta de la lista según el rol ("/hm/candidatos" o "/at/candidatos").
+export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base: string }) {
   const [sel, setSel] = useState<string[]>([]);
   const [abierto, setAbierto] = useState<string | null>(null);
   const [cv, setCv] = useState<FilaCandidato | null>(null);
@@ -57,14 +58,14 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
   return (
     <>
       <div className="overflow-x-auto rounded-md border border-[var(--lh-rule)] bg-[var(--lh-card)]">
-        <table className="w-full min-w-[1200px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--lh-rule)] whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">
               <th className="w-10 px-4 py-3" />
               <th className="px-3 py-3 font-medium">Candidato</th>
               <th className="px-3 py-3 font-medium">Vacante</th>
               <th className="px-3 py-3 font-medium">Escolaridad</th>
-              <th className="px-3 py-3 font-medium">Compensación act. / des.</th>
+              <th className="px-3 py-3 font-medium" title="Compensación actual / deseada (MXN)">Comp. act. / des.</th>
               <th className="px-3 py-3 font-medium">Compatibilidad</th>
               <th className="px-3 py-3 font-medium">No negociables</th>
               <th className="px-3 py-3 font-medium">Estatus</th>
@@ -131,7 +132,7 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
                       </button>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-col items-stretch gap-1.5">
                         <button
                           onClick={() => alternarPreguntas(f.id)}
                           aria-expanded={preguntasDe === f.id}
@@ -206,7 +207,7 @@ export function ListaCandidatos({ filas }: { filas: FilaCandidato[] }) {
           </button>
           {sel.length >= 2 ? (
             <Link
-              href={`/hm/candidatos/comparar?ids=${sel.join(",")}`}
+              href={`${base}/comparar?ids=${sel.join(",")}`}
               className="rounded-full bg-[var(--lh-accent)] px-4 py-1.5 font-medium hover:brightness-110"
             >
               Comparar lado a lado →

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { personalizarBorrador, personalizarSimulado, type ErrorPersonalizar } from "@/lib/ia/notificaciones";
 import { esPrueba } from "@/lib/ia/prueba";
+import { ROLES, sesionIA } from "@/lib/ia/sesion";
 
 // Agente 5: reescribe con IA el texto de borradores que creó el orquestador.
 // { id } o { ids: [...] } (máx. 50). dry_run: genera y valida sin actualizar la fila.
@@ -37,14 +38,18 @@ const HTTP: Record<ErrorPersonalizar, [number, string]> = {
 };
 
 export async function POST(req: Request) {
+  const s = await sesionIA(ROLES.personalizarNotificaciones);
+  if (!s.ok) return s.respuesta;
   const p = Cuerpo.safeParse(await req.json().catch(() => null));
   if (!p.success) {
     return Response.json({ error: "Datos inválidos", detalles: p.error.issues.map((i) => i.message) }, { status: 400 });
   }
   const { id, ids, dry_run, simulado } = p.data;
   const prueba = esPrueba(req);
-  // TODO(auth): tomar el actor de la sesión cuando se integre el login de Persona A.
-  const actor = { id: null, rol: null };
+  const actor = s.actor;
+  // ¿Ve el usuario esta notificación? Lo decide RLS (notificaciones_select) con la sesión.
+  const visible = async (nid: string) =>
+    Boolean((await s.supabase.from("notificaciones").select("id").eq("id", nid).maybeSingle()).data);
 
   // personalizarBorrador / personalizarSimulado nunca lanzan: toda falla llega como { ok: false }.
   const ejecutar = async (fn: () => ReturnType<typeof personalizarBorrador>, clave: string | null) => {
@@ -67,6 +72,10 @@ export async function POST(req: Request) {
   };
 
   if (simulado) {
+    // Herramienta de desarrollo (borrador en memoria): solo admin.
+    if (actor.rol !== "admin") {
+      return Response.json({ error: "simulado solo está disponible para admin", codigo: "NO_AUTORIZADO" }, { status: 403 });
+    }
     const r = await ejecutar(
       () =>
         personalizarSimulado(
@@ -80,7 +89,14 @@ export async function POST(req: Request) {
 
   const lista = [...new Set(ids ?? [id!])];
   const resultados = [];
-  for (const nid of lista) resultados.push(await ejecutar(() => personalizarBorrador(nid, { dryRun: dry_run, prueba, actor }), nid));
+  for (const nid of lista) {
+    if (!(await visible(nid))) {
+      resultados.push({ id: nid, ok: false, status: 404, error: "Notificación no encontrada", codigo: "no_encontrada" });
+      continue;
+    }
+    // Escribe con el rol de servicio (UPDATE condicionado a estatus='borrador').
+    resultados.push(await ejecutar(() => personalizarBorrador(nid, { dryRun: dry_run, prueba, actor }), nid));
+  }
   if (lista.length === 1) return Response.json(resultados[0], { status: resultados[0].status });
   return Response.json({ dry_run, resultados });
 }

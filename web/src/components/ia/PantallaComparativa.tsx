@@ -2,11 +2,10 @@ import Link from "next/link";
 import { BadgeReferido } from "@/components/ia/BadgeReferido";
 import { BotonCv } from "@/components/ia/BotonCv";
 import { SemaforoDetalle } from "@/components/ia/Semaforo";
-import { Shell } from "@/components/ia/Shell";
+import { TemaIA } from "@/components/ia/TemaIA";
 import { obtenerCandidatos, type FilaCandidato } from "@/lib/ia/consultas";
 import { mxn } from "@/lib/ia/formato";
-
-export const dynamic = "force-dynamic";
+import { createClient } from "@/lib/supabase/server";
 
 // Filas con la estructura del Excel de docs/00 (AssessFirst).
 type Fila = { etiqueta: string; render: (c: FilaCandidato) => React.ReactNode; destacar?: boolean };
@@ -48,22 +47,23 @@ function Porcentaje({ valor, mejor }: { valor: number | null; mejor: boolean }) 
   );
 }
 
-export default async function CompararPage({ searchParams }: PageProps<"/hm/candidatos/comparar">) {
-  const { ids } = await searchParams;
-  const lista_ids = (typeof ids === "string" ? ids.split(",") : []).filter(Boolean).slice(0, 6);
-  const cands = await obtenerCandidatos(lista_ids);
+// Comparativa lado a lado (vista HM y AT). Lee con el cliente de SESIÓN (RLS):
+// si un id no es visible para el usuario, simplemente no aparece.
+export async function PantallaComparativa({ base, ids }: { base: "/hm/candidatos" | "/at/candidatos"; ids?: string }) {
+  const lista_ids = (ids ?? "").split(",").filter(Boolean).slice(0, 6);
+  const cands = await obtenerCandidatos(await createClient(), lista_ids);
 
   if (cands.length < 2) {
     return (
-      <Shell rol="HM">
+      <TemaIA>
         <p className="text-sm">
           Selecciona al menos 2 candidatos en la{" "}
-          <Link href="/hm/candidatos" className="underline">
+          <Link href={base} className="underline">
             lista
           </Link>
           .
         </p>
-      </Shell>
+      </TemaIA>
     );
   }
 
@@ -157,8 +157,8 @@ export default async function CompararPage({ searchParams }: PageProps<"/hm/cand
   ];
 
   return (
-    <Shell rol="HM">
-      <Link href="/hm/candidatos" className="text-sm text-[var(--lh-muted)] hover:text-[var(--lh-ink)]">
+    <TemaIA>
+      <Link href={base} className="text-sm text-[var(--lh-muted)] hover:text-[var(--lh-ink)]">
         ← Lista de candidatos
       </Link>
       <div className="mb-6 mt-2">
@@ -223,6 +223,6 @@ export default async function CompararPage({ searchParams }: PageProps<"/hm/cand
           </tbody>
         </table>
       </div>
-    </Shell>
+    </TemaIA>
   );
 }

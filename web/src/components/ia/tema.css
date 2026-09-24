@@ -1,5 +1,5 @@
 /* Tema de las vistas de candidatos (Persona B). Todo va bajo .lh-shell para
-   no afectar las pantallas de proceso. */
+   no afectar las pantallas de proceso; se monta dentro del AppShell. */
 .lh-shell {
   --lh-paper: #f6f3ee;
   --lh-card: #fffdf9;
@@ -11,9 +11,8 @@
   --lh-ok: #15803d;
   --lh-warn: #d97706;
   --lh-bad: #dc2626;
-  background:
-    radial-gradient(1200px 400px at 90% -10%, #f3e3ea 0%, transparent 60%),
-    var(--lh-paper);
+  /* Dentro del AppShell de Persona A: sin fondo propio (usa el del shell). */
+  background: transparent;
   color: var(--lh-ink);
   font-family: var(--font-body), ui-sans-serif, sans-serif;
   color-scheme: light;

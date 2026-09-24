@@ -14,6 +14,7 @@ import {
 } from "./schemas";
 import { registrarAudit, type Actor, type OpcionesAudit } from "./servicio";
 import { temasProhibidos } from "./temas-prohibidos";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Agente 3 de docs/04: generador de preguntas de entrevista.
@@ -268,12 +269,14 @@ export interface SetPreguntasGuardado {
 }
 
 // Lectura sin regenerar (panel de la lista y, después, la vista del entrevistador).
+// `db`: cliente de sesión para mostrar (RLS) o el de servicio dentro del agente.
 export async function obtenerPreguntasGuardadas(
+  db: SupabaseClient,
   vacanteId: string,
   candidatoId: string,
   tipo: TipoEntrevista,
 ): Promise<SetPreguntasGuardado | null> {
-  const { data, error } = await createAdminClient()
+  const { data, error } = await db
     .from("preguntas_entrevista")
     .select("tipo, preguntas, generado_por, ts")
     .eq("vacante_id", vacanteId)
@@ -292,8 +295,8 @@ export async function obtenerPreguntasGuardadas(
   };
 }
 
-async function candidatoVacante(candidatoVacanteId: string) {
-  const { data, error } = await createAdminClient()
+async function candidatoVacante(db: SupabaseClient, candidatoVacanteId: string) {
+  const { data, error } = await db
     .from("candidato_vacante")
     .select("id, candidato_id, vacante_id, ficha, cumple_no_negociables, candidatos(nombre), vacantes(titulo, descripcion)")
     .eq("id", candidatoVacanteId)
@@ -302,10 +305,11 @@ async function candidatoVacante(candidatoVacanteId: string) {
   return data;
 }
 
-export async function preguntasGuardadasDe(candidatoVacanteId: string, tipo: TipoEntrevista) {
-  const cv = await candidatoVacante(candidatoVacanteId);
+// Lectura para la UI con el cliente de SESIÓN: RLS (preguntas_entrevista_select) decide.
+export async function preguntasGuardadasDe(db: SupabaseClient, candidatoVacanteId: string, tipo: TipoEntrevista) {
+  const cv = await candidatoVacante(db, candidatoVacanteId);
   if (!cv) return { error: "no_encontrado" as const };
-  return { set: await obtenerPreguntasGuardadas(cv.vacante_id, cv.candidato_id, tipo) };
+  return { set: await obtenerPreguntasGuardadas(db, cv.vacante_id, cv.candidato_id, tipo) };
 }
 
 // Carga los datos de un candidato_vacante, genera, guarda y audita.
@@ -316,7 +320,7 @@ export async function generarPreguntasParaCandidato(
   opciones: OpcionesAudit = {},
 ) {
   const sb = createAdminClient();
-  const cv = await candidatoVacante(candidatoVacanteId);
+  const cv = await candidatoVacante(sb, candidatoVacanteId);
   if (!cv) return { error: "no_encontrado" as const };
 
   const ficha = (cv.ficha ?? {}) as Partial<Ficha>;
@@ -324,7 +328,7 @@ export async function generarPreguntasParaCandidato(
 
   // Un set escrito a mano es trabajo humano: la IA no lo sobrescribe.
   // Se revisa antes de llamar al modelo para no gastar en una generación que no se guardaría.
-  const previo = await obtenerPreguntasGuardadas(cv.vacante_id, cv.candidato_id, tipo);
+  const previo = await obtenerPreguntasGuardadas(sb, cv.vacante_id, cv.candidato_id, tipo);
   if (previo?.generado_por === "manual") return { error: "manual" as const };
 
   const nn = await sb.from("no_negociables").select("id, texto, tipo").eq("vacante_id", cv.vacante_id).order("id");

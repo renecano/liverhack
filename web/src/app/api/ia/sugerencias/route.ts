@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { esPrueba } from "@/lib/ia/prueba";
+import { NO_ENCONTRADO, ROLES, sesionIA, veCandidatoVacante } from "@/lib/ia/sesion";
 import { sugerenciasGuardadasDe, sugerirVacantesDeProceso } from "@/lib/ia/sugeridor";
 
 // Sugerencias de vacantes para un candidato no seleccionado (agente 6).
@@ -12,7 +13,9 @@ const Cuerpo = z.object({ candidato_vacante_id: z.guid() });
 export async function GET(req: Request) {
   const p = Cuerpo.safeParse({ candidato_vacante_id: new URL(req.url).searchParams.get("candidato_vacante_id") });
   if (!p.success) return Response.json({ error: "Datos inválidos" }, { status: 400 });
-  const r = await sugerenciasGuardadasDe(p.data.candidato_vacante_id);
+  const s = await sesionIA(ROLES.verCandidatos);
+  if (!s.ok) return s.respuesta;
+  const r = await sugerenciasGuardadasDe(s.supabase, p.data.candidato_vacante_id);
   if ("error" in r && r.error) return Response.json({ error: "Candidato no encontrado en esa vacante" }, { status: 404 });
   return Response.json(r);
 }
@@ -25,9 +28,13 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  // TODO(auth): tomar el actor de la sesión cuando Persona A publique el login.
+  const s = await sesionIA(ROLES.generarIA);
+  if (!s.ok) return s.respuesta;
+  if (!(await veCandidatoVacante(s.supabase, p.data.candidato_vacante_id))) return NO_ENCONTRADO();
+  // Escribe con el rol de servicio (RLS solo deja escribir sugerencias a AT/admin y el
+  // sugeridor debe leer TODAS las vacantes abiertas); el acceso ya se validó con la sesión.
   // sugerirVacantesDeProceso nunca lanza: toda falla llega como { ok: false, error }.
-  const r = await sugerirVacantesDeProceso(p.data.candidato_vacante_id, { prueba: esPrueba(req) });
+  const r = await sugerirVacantesDeProceso(p.data.candidato_vacante_id, { actor: s.actor, prueba: esPrueba(req) });
   if (r.ok) return Response.json(r);
   const HTTP: Record<typeof r.error, [number, string]> = {
     no_encontrado: [404, "Candidato no encontrado en esa vacante"],

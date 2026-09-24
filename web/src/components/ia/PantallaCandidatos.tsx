@@ -1,18 +1,26 @@
 import Link from "next/link";
 import { ListaCandidatos } from "@/components/ia/ListaCandidatos";
-import { Shell } from "@/components/ia/Shell";
+import { TemaIA } from "@/components/ia/TemaIA";
 import { listarCandidatos, listarVacantes } from "@/lib/ia/consultas";
+import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
-
-export default async function CandidatosPage({ searchParams }: PageProps<"/hm/candidatos">) {
-  const { vacante } = await searchParams;
-  const vacanteId = typeof vacante === "string" ? vacante : undefined;
-  const [filas, vacantes] = await Promise.all([listarCandidatos(vacanteId), listarVacantes()]);
+// Lista de candidatos (vista HM y AT). Lee con el cliente de SESIÓN: RLS decide
+// qué vacantes ve cada usuario. La sesión y el rol los exige el layout del shell.
+export async function PantallaCandidatos({
+  base,
+  vacanteId,
+  puedeCargar,
+}: {
+  base: "/hm/candidatos" | "/at/candidatos";
+  vacanteId?: string;
+  puedeCargar: boolean;
+}) {
+  const db = await createClient();
+  const [filas, vacantes] = await Promise.all([listarCandidatos(db, vacanteId), listarVacantes(db)]);
   const referidos = filas.filter((f) => f.es_referido).length;
 
   return (
-    <Shell rol="HM">
+    <TemaIA>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--lh-accent)]">Lista de candidatos</p>
@@ -24,20 +32,22 @@ export default async function CandidatosPage({ searchParams }: PageProps<"/hm/ca
             selecciona 2 o más para compararlos lado a lado
           </p>
         </div>
-        <Link
-          href="/at/carga"
-          className="rounded-sm border border-[var(--lh-ink)] px-4 py-2 text-sm font-medium hover:bg-[var(--lh-ink)] hover:text-white"
-        >
-          + Cargar candidato
-        </Link>
+        {puedeCargar && (
+          <Link
+            href="/at/carga"
+            className="rounded-sm border border-[var(--lh-ink)] px-4 py-2 text-sm font-medium hover:bg-[var(--lh-ink)] hover:text-white"
+          >
+            + Cargar candidato
+          </Link>
+        )}
       </div>
 
       <nav className="mb-4 flex flex-wrap gap-1.5 text-[13px]" aria-label="Filtrar por vacante">
-        <Chip href="/hm/candidatos" activo={!vacanteId}>
+        <Chip href={base} activo={!vacanteId}>
           Todas
         </Chip>
         {vacantes.map((v) => (
-          <Chip key={v.id} href={`/hm/candidatos?vacante=${v.id}`} activo={v.id === vacanteId}>
+          <Chip key={v.id} href={`${base}?vacante=${v.id}`} activo={v.id === vacanteId}>
             {v.titulo}
           </Chip>
         ))}
@@ -51,13 +61,13 @@ export default async function CandidatosPage({ searchParams }: PageProps<"/hm/ca
       </div>
 
       {filas.length ? (
-        <ListaCandidatos filas={filas} />
+        <ListaCandidatos filas={filas} base={base} />
       ) : (
         <p className="rounded-md border border-dashed border-[var(--lh-rule)] p-10 text-center text-sm text-[var(--lh-muted)]">
           Esta vacante aún no tiene candidatos.
         </p>
       )}
-    </Shell>
+    </TemaIA>
   );
 }
 

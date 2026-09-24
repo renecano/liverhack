@@ -1,13 +1,18 @@
 import { FormCarga } from "@/components/ia/FormCarga";
-import { Shell } from "@/components/ia/Shell";
+import { TemaIA } from "@/components/ia/TemaIA";
 import { listarVacantes } from "@/lib/ia/consultas";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+// Montada dentro de app/at/layout.tsx (Persona A): exige rol "at" y pone el AppShell.
+// Las vacantes se leen con la sesión (RLS: solo las que el AT puede ver).
 export default async function CargaPage() {
-  const vacantes = (await listarVacantes()).filter((v) => v.estatus !== "cubierta" && v.estatus !== "cancelada");
+  const vacantes = (await listarVacantes(await createClient())).filter(
+    (v) => v.estatus !== "cubierta" && v.estatus !== "cancelada",
+  );
   return (
-    <Shell rol="AT">
+    <TemaIA>
       <div className="mb-6">
         <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--lh-accent)]">Carga de candidatos</p>
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-semibold tracking-tight">
@@ -18,7 +23,7 @@ export default async function CargaPage() {
           la validación, se reintenta y no se guarda nada a medias.
         </p>
       </div>
-      <FormCarga vacantes={vacantes} />
-    </Shell>
+      <FormCarga vacantes={vacantes} hrefLista="/at/candidatos" />
+    </TemaIA>
   );
 }
