@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, Send, Sparkles } from "lucide-react";
-import { preguntarAsistenteHM } from "@/lib/actions/asistente";
+import { preguntarAsistente } from "@/lib/actions/asistente";
 
 type Mensaje =
   | { de: "hm"; texto: string }
   | { de: "ia"; texto: string; enlaces: { titulo: string; href: string }[]; respaldo: boolean }
   | { de: "error"; texto: string };
 
-const SUGERIDAS = ["¿Qué tengo que hacer hoy?", "¿Qué vacante va más atrasada?", "¿A quién estoy bloqueando?"];
+const SUGERIDAS = ["¿Qué tengo que hacer hoy?", "¿Cuál va más atrasada?", "¿Cuántas están en riesgo?", "¿Quién bloquea la de Backend?"];
 
 /**
  * Chat del asistente del HM (agente 8). Solo lee y guía; no ejecuta acciones.
@@ -31,7 +31,7 @@ export function ChatAsistenteHM({ semilla }: { semilla?: { texto: string; n: num
     setTexto("");
     setPensando(true);
     try {
-      const r = await preguntarAsistenteHM(q);
+      const r = await preguntarAsistente(q);
       setMensajes((m) => [
         ...m,
         r.ok ? { de: "ia", texto: r.respuesta, enlaces: r.enlaces, respaldo: r.generado_por === "respaldo" } : { de: "error", texto: r.error },
