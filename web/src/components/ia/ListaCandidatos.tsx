@@ -26,7 +26,7 @@ function Barra({ valor }: { valor: number | null }) {
     <div className="flex items-center gap-2">
       <span className="num w-9 text-right text-[13px] font-medium">{valor}%</span>
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-stone-200">
-        <span className="block h-full rounded-full bg-[var(--lh-ink)]" style={{ width: `${valor}%` }} />
+        <span className="block h-full rounded-full bg-gradient-to-r from-stone-900 to-liv transition-[width] duration-700" style={{ width: `${valor}%` }} />
       </span>
     </div>
   );
@@ -57,10 +57,10 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
 
   return (
     <>
-      <div className="overflow-x-auto rounded-md border border-[var(--lh-rule)] bg-[var(--lh-card)]">
+      <div className="surface overflow-x-auto rounded-3xl">
         <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-[var(--lh-rule)] whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-[var(--lh-muted)]">
+            <tr className="border-b border-[var(--lh-rule)] whitespace-nowrap text-[11px] uppercase tracking-[0.14em] text-[var(--lh-muted)]">
               <th className="w-10 px-4 py-3" />
               <th className="px-3 py-3 font-medium">Candidato</th>
               <th className="px-3 py-3 font-medium">Vacante</th>
@@ -79,7 +79,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
               return (
                 <Fragment key={f.id}>
                   <tr
-                    className={`lh-rise border-b border-[var(--lh-rule)] transition-colors ${marcado ? "bg-[#fbeef5]" : "hover:bg-stone-50"}`}
+                    className={`lh-rise border-b border-[var(--lh-rule)] transition-colors duration-300 ${marcado ? "bg-liv-50" : "hover:bg-stone-50/80"}`}
                     style={{ animationDelay: `${i * 35}ms` }}
                   >
                     <td className="px-4 py-3">
@@ -88,7 +88,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                         checked={marcado}
                         onChange={() => alternar(f.id)}
                         aria-label={`Seleccionar a ${f.nombre}`}
-                        className="h-4 w-4 accent-[var(--lh-accent)]"
+                        className="h-4 w-4 cursor-pointer accent-[var(--lh-accent)]"
                       />
                     </td>
                     <td className="px-3 py-3">
@@ -114,7 +114,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                     <td className="px-3 py-3">
                       <button
                         onClick={() => setAbierto(abierto === f.id ? null : f.id)}
-                        className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-stone-100"
+                        className="press flex items-center gap-2 rounded-full px-2 py-1 hover:bg-stone-100"
                         aria-expanded={abierto === f.id}
                       >
                         <Semaforo items={f.no_negociables} />
@@ -126,7 +126,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                     <td className="px-3 py-3">
                       <button
                         onClick={() => setCv(f)}
-                        className="whitespace-nowrap rounded border border-[var(--lh-rule)] px-2.5 py-1 text-xs hover:border-[var(--lh-ink)]"
+                        className="press whitespace-nowrap rounded-full bg-white px-3 py-1 text-xs font-semibold ring-1 ring-stone-900/10 hover:text-liv-deep hover:ring-liv/40"
                       >
                         Ver PDF
                       </button>
@@ -136,10 +136,10 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                         <button
                           onClick={() => alternarPreguntas(f.id)}
                           aria-expanded={preguntasDe === f.id}
-                          className={`whitespace-nowrap rounded border px-2.5 py-1 text-xs ${
+                          className={`press whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${
                             preguntasDe === f.id
-                              ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
-                              : "border-[var(--lh-rule)] hover:border-[var(--lh-ink)]"
+                              ? "border-liv bg-liv text-white"
+                              : "border-[var(--lh-rule)] bg-white hover:border-liv/50 hover:text-liv-deep"
                           }`}
                         >
                           Preguntas
@@ -148,10 +148,10 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                           <button
                             onClick={() => alternarSugerencias(f.id)}
                             aria-expanded={sugerenciasDe === f.id}
-                            className={`whitespace-nowrap rounded border px-2.5 py-1 text-xs ${
+                            className={`press whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold ${
                               sugerenciasDe === f.id
-                                ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
-                                : "border-[var(--lh-rule)] hover:border-[var(--lh-ink)]"
+                                ? "border-liv bg-liv text-white"
+                                : "border-[var(--lh-rule)] bg-white hover:border-liv/50 hover:text-liv-deep"
                             }`}
                           >
                             Sugerir vacantes
@@ -172,7 +172,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                     </tr>
                   )}
                   {panelesMontados.includes(f.id) && (
-                    <tr className="border-b border-[var(--lh-rule)] bg-[#fbf7f1]" hidden={preguntasDe !== f.id}>
+                    <tr className="border-b border-[var(--lh-rule)] bg-liv-50/40" hidden={preguntasDe !== f.id}>
                       <td />
                       <td colSpan={9} className="px-3 py-4">
                         <PanelPreguntas candidatoVacanteId={f.id} noNegociables={f.no_negociables} />
@@ -180,7 +180,7 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
                     </tr>
                   )}
                   {sugMontadas.includes(f.id) && (
-                    <tr className="border-b border-[var(--lh-rule)] bg-[#f4f7f2]" hidden={sugerenciasDe !== f.id}>
+                    <tr className="border-b border-[var(--lh-rule)] bg-emerald-50/40" hidden={sugerenciasDe !== f.id}>
                       <td />
                       <td colSpan={9} className="px-3 py-4">
                         <PanelSugerencias candidatoVacanteId={f.id} />
@@ -198,22 +198,19 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
       {sel.length > 0 && <div className="h-20" aria-hidden />}
 
       {sel.length > 0 && (
-        <div className="lh-rise fixed inset-x-0 bottom-6 z-40 mx-auto flex w-fit items-center gap-4 rounded-full bg-[var(--lh-ink)] py-2 pl-5 pr-2 text-sm text-white shadow-xl">
-          <span className="num">
+        <div className="animate-drawer glass fixed inset-x-0 bottom-6 z-40 mx-auto flex w-fit items-center gap-3 rounded-full border border-white/60 py-2 pr-2 pl-5 text-sm shadow-[0_20px_50px_-15px_rgb(17_24_39/0.35),0_0_0_1px_rgb(17_24_39/0.06)]">
+          <span className="num font-semibold">
             {sel.length} seleccionado{sel.length > 1 ? "s" : ""}
           </span>
-          <button onClick={() => setSel([])} className="text-stone-300 hover:text-white">
+          <button onClick={() => setSel([])} className="press rounded-full px-2 py-1 text-stone-500 hover:bg-stone-900/5 hover:text-stone-900">
             Limpiar
           </button>
           {sel.length >= 2 ? (
-            <Link
-              href={`${base}/comparar?ids=${sel.join(",")}`}
-              className="rounded-full bg-[var(--lh-accent)] px-4 py-1.5 font-medium hover:brightness-110"
-            >
+            <Link href={`${base}/comparar?ids=${sel.join(",")}`} className="press btn-liv rounded-full px-4 py-2 font-semibold">
               Comparar lado a lado →
             </Link>
           ) : (
-            <span className="rounded-full bg-white/10 px-4 py-1.5 text-stone-300">Elige 2 o más</span>
+            <span className="rounded-full bg-stone-900/5 px-4 py-2 text-stone-500">Elige 2 o más</span>
           )}
         </div>
       )}

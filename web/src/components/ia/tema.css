@@ -1,17 +1,11 @@
-/* Tema de las vistas de candidatos (Persona B). Todo va bajo .lh-shell para
-   no afectar las pantallas de proceso; se monta dentro del AppShell. */
+/* Tema de las vistas de candidatos (Persona B). La paleta --lh-* vive en
+   globals.css (:root) para que los componentes ia/* se vean igual fuera de
+   .lh-shell; aquí solo se fijan tipografías y utilidades del contenedor. */
 .lh-shell {
-  --lh-paper: #f6f3ee;
-  --lh-card: #fffdf9;
-  --lh-ink: #1c1917;
-  --lh-ink-2: #44403c;
-  --lh-muted: #78716c;
-  --lh-rule: #e2dcd2;
-  --lh-accent: #c8007f;
-  --lh-ok: #15803d;
-  --lh-warn: #d97706;
-  --lh-bad: #dc2626;
-  /* Dentro del AppShell de Persona A: sin fondo propio (usa el del shell). */
+  /* Misma familia que el resto de LivHire (Geist): display = sans, datos = mono. */
+  --font-display: var(--font-geist-sans);
+  --font-body: var(--font-geist-sans);
+  --font-data: var(--font-geist-mono);
   background: transparent;
   color: var(--lh-ink);
   font-family: var(--font-body), ui-sans-serif, sans-serif;
@@ -22,10 +16,10 @@
   font-variant-numeric: tabular-nums;
 }
 @keyframes lh-rise {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-.lh-rise { animation: lh-rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.lh-rise { animation: lh-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .lh-rise { animation: none; }
 }

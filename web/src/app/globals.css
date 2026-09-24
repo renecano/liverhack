@@ -1,26 +1,313 @@
 @import "tailwindcss";
 
+/* ──────────────────────────────────────────────────────────────────────────
+   LivHire · sistema visual
+   Identidad Liverpool: rosa #E2007A como único acento, blancos puros, grises
+   limpios (#F9FAFB) y semáforo SLA claro (verde / ámbar / rojo).
+   ────────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f9fafb;
+  --foreground: #0b0b0f;
+  --liv: #e2007a;
+  --liv-deep: #b80063;
+  --liv-soft: #fdf0f7;
+  --sla-ok: #10b981;
+  --sla-warn: #f59e0b;
+  --sla-bad: #ef4444;
+  /* Curvas "spring": sobrepasan un poco y asientan, como un resorte. */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glide: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Paleta de las vistas de candidatos (componentes ia/*), disponible en toda la app. */
+  --lh-paper: #f9fafb;
+  --lh-card: #ffffff;
+  --lh-ink: #0b0b0f;
+  --lh-ink-2: #3f3f46;
+  --lh-muted: #71717a;
+  --lh-rule: #ececef;
+  --lh-accent: #e2007a;
+  --lh-ok: #10b981;
+  --lh-warn: #f59e0b;
+  --lh-bad: #ef4444;
+  color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-liv: #e2007a;
+  --color-liv-deep: #b80063;
+  --color-liv-soft: #fdf0f7;
+  --color-liv-50: #fff5fa;
+  --color-liv-100: #fde6f2;
+  --color-liv-200: #fbc9e3;
+  --color-canvas: #f9fafb;
+  --color-ok: #10b981;
+  --color-warn: #f59e0b;
+  --color-bad: #ef4444;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+}
+
+::selection {
+  background: color-mix(in oklab, var(--liv) 22%, white);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Superficies ────────────────────────────────────────────────────────── */
+
+.glass {
+  background: color-mix(in oklab, white 72%, transparent);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+}
+
+.surface {
+  background: white;
+  border: 1px solid rgb(17 24 39 / 0.06);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.9) inset,
+    0 1px 2px rgb(17 24 39 / 0.04),
+    0 8px 24px -12px rgb(17 24 39 / 0.08);
+}
+
+.hairline {
+  border-color: rgb(17 24 39 / 0.07);
+}
+
+/* Fondo ambiental: un halo rosa muy tenue arriba y rejilla sutil. */
+.ambient {
+  background:
+    radial-gradient(1200px 480px at 12% -8%, rgb(226 0 122 / 0.07), transparent 60%),
+    radial-gradient(900px 420px at 100% 0%, rgb(99 102 241 / 0.05), transparent 60%),
+    var(--background);
+}
+
+.grid-fade {
+  background-image:
+    linear-gradient(rgb(17 24 39 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(17 24 39 / 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at top, black 20%, transparent 70%);
+}
+
+.text-gradient-liv {
+  background: linear-gradient(100deg, #0b0b0f 10%, var(--liv) 55%, #ff5fae 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Folder Float: carpetas flotantes con profundidad 3D ────────────────── */
+
+.folder {
+  --rx: 0deg;
+  --ry: 0deg;
+  --lift: 0px;
+  position: relative;
+  transform: perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry)) translateY(var(--lift));
+  transition: transform 0.55s var(--spring);
+  will-change: transform;
+}
+.folder:hover,
+.folder:focus-within {
+  --lift: -6px;
+}
+.folder-card {
+  position: relative;
+  transition: box-shadow 0.4s var(--glide), border-color 0.3s;
+}
+.folder:hover .folder-card,
+.folder:focus-within .folder-card {
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.9) inset,
+    0 30px 60px -28px rgb(17 24 39 / 0.28),
+    0 12px 24px -16px rgb(226 0 122 / 0.2);
+}
+/* Hojas apiladas detrás de la carpeta (expedientes). Se pintan antes que la tarjeta. */
+.folder-sheet {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: white;
+  border: 1px solid rgb(17 24 39 / 0.07);
+  transition: transform 0.55s var(--spring), opacity 0.3s;
+  pointer-events: none;
+}
+.folder-sheet.s1 { transform: translateY(6px) scale(0.965); opacity: 0.8; }
+.folder-sheet.s2 { transform: translateY(12px) scale(0.93); opacity: 0.5; }
+.folder:hover .folder-sheet.s1 { transform: translate(-7px, 9px) rotate(-2deg) scale(0.965); }
+.folder:hover .folder-sheet.s2 { transform: translate(9px, 16px) rotate(2.5deg) scale(0.93); }
+.folder-tab {
+  position: absolute;
+  top: -10px;
+  left: 18px;
+  height: 11px;
+  width: 84px;
+  border-radius: 10px 10px 0 0;
+  background: white;
+  border: 1px solid rgb(17 24 39 / 0.06);
+  border-bottom: 0;
+}
+
+/* ── Animaciones ────────────────────────────────────────────────────────── */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { opacity: 1; transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@keyframes drawer-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes sheet-in {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--ring, rgb(239 68 68 / 0.45)); }
+  80%, 100% { box-shadow: 0 0 0 10px transparent; }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes flow {
+  from { background-position: 0 0; }
+  to { background-position: 0 -40px; }
+}
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-6px); }
+  40%, 60% { transform: translateX(6px); }
+}
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.animate-rise { animation: rise 0.6s var(--glide) both; }
+.animate-pop { animation: pop 0.5s var(--spring) both; }
+.animate-drawer { animation: drawer-in 0.5s var(--spring) both; }
+.animate-sheet { animation: sheet-in 0.45s var(--glide) both; }
+.animate-fade { animation: fade-in 0.3s ease both; }
+.animate-shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.animate-float { animation: float-y 3.2s ease-in-out infinite; }
+.pulse-bad { --ring: rgb(239 68 68 / 0.5); animation: pulse-ring 1.8s ease-out infinite; }
+.pulse-warn { --ring: rgb(245 158 11 / 0.45); animation: pulse-ring 2.4s ease-out infinite; }
+.pulse-liv { --ring: rgb(226 0 122 / 0.45); animation: pulse-ring 2s ease-out infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, #f1f2f4 25%, #fafafa 37%, #f1f2f4 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+/* Botón con resorte al presionar. */
+.press {
+  transition: transform 0.35s var(--spring), background-color 0.2s, box-shadow 0.25s, color 0.2s, opacity 0.2s;
+}
+.press:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.btn-liv {
+  background: linear-gradient(180deg, #ef1b8c, var(--liv));
+  color: white;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.25) inset,
+    0 8px 20px -8px rgb(226 0 122 / 0.6);
+}
+.btn-liv:hover:not(:disabled) {
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.25) inset,
+    0 12px 28px -8px rgb(226 0 122 / 0.7);
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--liv);
+  outline-offset: 2px;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .folder { transform: none; }
+}
+
+/* ── Slider del scorecard ───────────────────────────────────────────────── */
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--fill, #e2007a) var(--pct, 50%), #f1f1f3 var(--pct, 50%));
+  outline: none;
+  cursor: pointer;
+}
+.slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  width: 22px;
+  border-radius: 999px;
+  background: white;
+  border: 0;
+  box-shadow: 0 0 0 1px rgb(17 24 39 / 0.1), 0 4px 12px -2px rgb(17 24 39 / 0.25);
+  transition: transform 0.35s var(--spring), box-shadow 0.2s;
+}
+.slider:hover::-webkit-slider-thumb,
+.slider:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 5px rgb(226 0 122 / 0.15), 0 4px 12px -2px rgb(17 24 39 / 0.25);
+}
+.slider::-moz-range-thumb {
+  height: 22px;
+  width: 22px;
+  border-radius: 999px;
+  background: white;
+  border: 0;
+  box-shadow: 0 0 0 1px rgb(17 24 39 / 0.1), 0 4px 12px -2px rgb(17 24 39 / 0.25);
 }
