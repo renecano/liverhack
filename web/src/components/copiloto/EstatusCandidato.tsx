@@ -1,19 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Search, Star } from "lucide-react";
+import { ArrowUpRight, Search, Star } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ETAPAS, NOMBRE_ETAPA } from "@/lib/orquestador/estados";
-import type { EtapaProceso } from "@/lib/supabase/types";
+import type { EtapaProceso, RolUsuario } from "@/lib/supabase/types";
 
 type Fila = {
   id: string;
+  vacante_id: string;
   etapa: EtapaProceso;
   estatus: string;
   fit_score: number | null;
   es_referido: boolean;
   candidatos: { nombre: string } | { nombre: string }[] | null;
   vacantes: { titulo: string } | { titulo: string }[] | null;
+};
+
+/** Lista de candidatos que cada rol puede abrir (el entrevistador no tiene una). */
+const LISTA: Partial<Record<RolUsuario, string>> = {
+  hm: "/hm/candidatos",
+  at: "/at/candidatos",
+  hrbp: "/hrbp/candidatos",
+  admin: "/hrbp/candidatos",
 };
 
 const uno = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? (x[0] ?? null) : x);
@@ -27,7 +37,8 @@ const ESTATUS: Record<string, string> = {
 };
 
 /** Consulta rápida de estatus. Lee con la sesión del navegador: RLS decide qué candidatos ve cada rol. */
-export function EstatusCandidato() {
+export function EstatusCandidato({ rol, onNavegar }: { rol: RolUsuario; onNavegar?: () => void }) {
+  const lista = LISTA[rol];
   const [q, setQ] = useState("");
   const [filas, setFilas] = useState<Fila[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +50,7 @@ export function EstatusCandidato() {
     const t = setTimeout(async () => {
       const { data, error } = await createClient()
         .from("candidato_vacante")
-        .select("id, etapa, estatus, fit_score, es_referido, candidatos!inner(nombre), vacantes!inner(titulo)")
+        .select("id, vacante_id, etapa, estatus, fit_score, es_referido, candidatos!inner(nombre), vacantes!inner(titulo)")
         .ilike("candidatos.nombre", `%${termino.replace(/[%_]/g, "")}%`)
         .limit(8);
       if (!vivo) return;
@@ -75,8 +86,8 @@ export function EstatusCandidato() {
         {visibles && visibles.length === 0 && !error && <p className="px-1 pt-2 text-[12.5px] text-stone-400">Sin coincidencias visibles para tu rol.</p>}
         {visibles?.map((f, i) => {
           const idx = ETAPAS.indexOf(f.etapa);
-          return (
-            <article key={f.id} className="animate-rise rounded-2xl border border-stone-900/[0.06] bg-white p-3 shadow-sm" style={{ animationDelay: `${i * 40}ms` }}>
+          const contenido = (
+            <>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="flex items-center gap-1.5 truncate text-[14px] font-semibold">
@@ -85,7 +96,10 @@ export function EstatusCandidato() {
                   </p>
                   <p className="truncate text-[12px] text-stone-500">{uno(f.vacantes)?.titulo}</p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ring-1 ring-inset ${ESTATUS[f.estatus] ?? ESTATUS.pool}`}>{f.estatus}</span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ring-1 ring-inset ${ESTATUS[f.estatus] ?? ESTATUS.pool}`}>{f.estatus}</span>
+                  {lista && <ArrowUpRight className="h-4 w-4 text-stone-300 transition-all duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-liv" />}
+                </span>
               </div>
               <div className="mt-2.5 flex items-center gap-1" aria-label={`Etapa: ${NOMBRE_ETAPA[f.etapa]}`}>
                 {ETAPAS.map((e, j) => (
@@ -96,6 +110,22 @@ export function EstatusCandidato() {
                 <span>{NOMBRE_ETAPA[f.etapa]}</span>
                 <span className="tabular">Fit {f.fit_score ?? "—"}</span>
               </p>
+            </>
+          );
+          return lista ? (
+            <Link
+              key={f.id}
+              href={`${lista}?vacante=${f.vacante_id}#cv-${f.id}`}
+              onClick={onNavegar}
+              aria-label={`Abrir expediente de ${uno(f.candidatos)?.nombre ?? "candidato"}`}
+              className="press group animate-rise block rounded-2xl border border-stone-900/[0.06] bg-white p-3 shadow-sm transition-shadow hover:border-liv/30 hover:shadow-md"
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
+              {contenido}
+            </Link>
+          ) : (
+            <article key={f.id} className="animate-rise block rounded-2xl border border-stone-900/[0.06] bg-white p-3 shadow-sm" style={{ animationDelay: `${i * 40}ms` }}>
+              {contenido}
             </article>
           );
         })}

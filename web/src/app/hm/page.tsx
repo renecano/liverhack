@@ -1,15 +1,10 @@
 import Link from 'next/link';
 import { ArrowRight, Gavel, Layers, TriangleAlert } from 'lucide-react';
 import { getResumenVacantes } from '@/lib/actions/proceso';
-import { createClient } from '@/lib/supabase/server';
-import type { Notificacion } from '@/lib/supabase/types';
-import { NotificationCenter } from '@/components/proceso/notification-center';
 import { Encabezado, Metrica, Seccion, VacanteFolder, Vacio } from '@/components/proceso/piezas';
 import { GlideSelect } from '@/components/ui/GlideSelect';
 import { SlaDot } from '@/components/ui/Sla';
-import { BotonCopiloto } from '@/components/copiloto/BotonCopiloto';
 import { INFO_ESTADO, NOMBRE_ETAPA } from '@/lib/orquestador/estados';
-import { entregasDe } from '@/lib/acciones/entrega';
 
 type FiltroSla = 'todas' | 'atrasada' | 'en_riesgo' | 'a_tiempo';
 const FILTROS: FiltroSla[] = ['todas', 'atrasada', 'en_riesgo', 'a_tiempo'];
@@ -24,9 +19,7 @@ const COMPUERTA: Record<string, string> = {
 export default async function HmDashboard({ searchParams }: PageProps<'/hm'>) {
   const { sla } = await searchParams;
   const filtro: FiltroSla = FILTROS.includes(sla as FiltroSla) ? (sla as FiltroSla) : 'todas';
-  const [resumen, supabase] = await Promise.all([getResumenVacantes(), createClient()]);
-  const { data: notificaciones } = await supabase.from('notificaciones').select('*').order('ts', { ascending: false }).limit(8);
-  const entregas = await entregasDe(notificaciones ?? []);
+  const resumen = await getResumenVacantes();
   const vacantes = resumen.ok ? resumen.data : [];
   const activas = vacantes.filter((v) => !INFO_ESTADO[v.estado]?.terminal);
   const pendientes = activas.filter((v) => v.estado.startsWith('ESPERANDO_HM_'));
@@ -39,7 +32,6 @@ export default async function HmDashboard({ searchParams }: PageProps<'/hm'>) {
       <Encabezado
         eyebrow="Hiring Manager"
         titulo={<>Tu proceso, <span className="text-gradient-liv">en una vista.</span></>}
-        acciones={<BotonCopiloto pregunta="¿Qué tengo que hacer hoy?">¿Qué hago hoy?</BotonCopiloto>}
       >
         Prioriza las decisiones que desbloquean a tu equipo. Semáforo por etapa, quién bloquea y fecha estimada de cobertura.
       </Encabezado>
@@ -83,7 +75,7 @@ export default async function HmDashboard({ searchParams }: PageProps<'/hm'>) {
             ))}
           </div>
         ) : (
-          <Vacio>No tienes compuertas pendientes. Tu equipo puede avanzar sin esperarte. ✨</Vacio>
+          <Vacio>No tienes compuertas pendientes. Tu equipo puede avanzar sin esperarte.</Vacio>
         )}
       </Seccion>
 
@@ -133,15 +125,8 @@ export default async function HmDashboard({ searchParams }: PageProps<'/hm'>) {
               )) : <li className="text-[13px] text-stone-400">Sin bloqueos. Todo fluye.</li>}
             </ul>
           </div>
-          <div className="relative overflow-hidden rounded-2xl border border-liv/15 bg-gradient-to-br from-liv-50 to-white p-5">
-            <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-liv">Asistente del HM</p>
-            <p className="mt-2 text-[15px] font-semibold leading-snug">Pregunta “¿qué tengo que hacer hoy?” y recibe tus pendientes por prioridad.</p>
-            <div className="mt-4"><BotonCopiloto pregunta="¿Qué tengo que hacer hoy?" variante="suave">Preguntar al copiloto</BotonCopiloto></div>
-          </div>
         </aside>
       </div>
-
-      <NotificationCenter notificaciones={(notificaciones ?? []) as Notificacion[]} entregas={entregas} />
     </div>
   );
 }

@@ -25,6 +25,7 @@ const NAV: Record<RolUsuario, ItemNav[]> = {
   hm: [
     { href: '/hm', label: 'Mis vacantes' },
     { href: '/hm/candidatos', label: 'Candidatos' },
+    { href: '/hm/notificaciones', label: 'Notificaciones' },
   ],
   at: [
     { href: '/at', label: 'Pipeline' },
@@ -34,10 +35,12 @@ const NAV: Record<RolUsuario, ItemNav[]> = {
   ],
   hrbp: [
     { href: '/hrbp', label: 'SLA y directorio' },
+    { href: '/hrbp/candidatos', label: 'Candidatos' },
     { href: '/hrbp/equidad', label: 'Equidad' },
   ],
   admin: [
     { href: '/hrbp', label: 'SLA y directorio' },
+    { href: '/hrbp/candidatos', label: 'Candidatos' },
     { href: '/hrbp/equidad', label: 'Equidad' },
   ],
   entrevistador: [{ href: '/entrevistador', label: 'Mis entrevistas' }],

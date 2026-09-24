@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowUpRight, FileUp, Gavel, Layers, MailCheck, Users } from 'lucide-react';
+import { ArrowUpRight, FileUp, Gavel, Layers, Users } from 'lucide-react';
 import { getResumenVacantes } from '@/lib/actions/proceso';
 import { createClient } from '@/lib/supabase/server';
 import { ETAPAS, INFO_ESTADO, NOMBRE_ETAPA } from '@/lib/orquestador/estados';
@@ -14,10 +14,9 @@ export default async function AtPipeline() {
   const [resumen, supabase] = await Promise.all([getResumenVacantes(), createClient()]);
   const vacantes = resumen.ok ? resumen.data.filter((v) => !INFO_ESTADO[v.estado]?.terminal) : [];
   const ids = vacantes.map((v) => v.id);
-  const [{ data: cvs }, { count: borradores }] = await Promise.all([
-    ids.length ? supabase.from('candidato_vacante').select('vacante_id, estatus').in('vacante_id', ids) : Promise.resolve({ data: [] as { vacante_id: string; estatus: string }[] }),
-    supabase.from('notificaciones').select('id', { count: 'exact', head: true }).eq('estatus', 'borrador'),
-  ]);
+  const { data: cvs } = ids.length
+    ? await supabase.from('candidato_vacante').select('vacante_id, estatus').in('vacante_id', ids)
+    : { data: [] as { vacante_id: string; estatus: string }[] };
   const candidatosPor = new Map<string, number>();
   for (const c of cvs ?? []) if (c.estatus === 'activo' || c.estatus === 'finalista') candidatosPor.set(c.vacante_id, (candidatosPor.get(c.vacante_id) ?? 0) + 1);
   const activos = [...candidatosPor.values()].reduce((a, b) => a + b, 0);
@@ -30,15 +29,9 @@ export default async function AtPipeline() {
         eyebrow="Atracción de Talento"
         titulo={<>Pipeline <span className="text-gradient-liv">por etapa.</span></>}
         acciones={
-          <>
-            <Link href="/at/comunicaciones" className="press inline-flex items-center gap-2 rounded-full border border-stone-900/10 bg-white px-4 py-2.5 text-[13.5px] font-semibold hover:border-liv/40 hover:text-liv-deep">
-              <MailCheck className="h-4 w-4" /> Comunicaciones
-              {!!borradores && <span className="tabular rounded-full bg-liv px-1.5 text-[11px] font-bold text-white">{borradores}</span>}
-            </Link>
-            <Link href="/at/carga" className="press btn-liv inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[13.5px] font-semibold">
-              <FileUp className="h-4 w-4" /> Carga mágica de CV
-            </Link>
-          </>
+          <Link href="/at/carga" className="press btn-liv inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[13.5px] font-semibold">
+            <FileUp className="h-4 w-4" /> Carga mágica de CV
+          </Link>
         }
       >
         Cada vacante en su etapa, con su semáforo. Avanza el tramo operativo; las compuertas del HM se respetan solas.

@@ -115,7 +115,7 @@ export async function PantallaComparativa({
   ids,
   puedeDecidir = false,
 }: {
-  base: "/hm/candidatos" | "/at/candidatos";
+  base: "/hm/candidatos" | "/at/candidatos" | "/hrbp/candidatos";
   ids?: string;
   puedeDecidir?: boolean;
 }) {

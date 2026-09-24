@@ -73,7 +73,7 @@ export function ChatAsistenteHM({ semilla }: { semilla?: { texto: string; n: num
         {mensajes.length === 0 && (
           <div className="animate-rise space-y-3">
             <div className="rounded-2xl rounded-tl-md bg-stone-900/[0.04] px-4 py-3 text-[13.5px] leading-relaxed text-stone-700">
-              Hola 👋 Reviso tus vacantes, compuertas y SLA reales y te digo <strong>qué hacer primero</strong>. Solo leo y
+              Hola. Reviso tus vacantes, compuertas y SLA reales y te digo <strong>qué hacer primero</strong>. Solo leo y
               ordeno: las decisiones siempre son tuyas.
             </div>
             <div className="flex flex-wrap gap-2">

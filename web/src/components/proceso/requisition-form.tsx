@@ -80,7 +80,7 @@ export function RequisitionForm({ posiciones, personas }: { posiciones: Posicion
               </optgroup>
               {bloqueadas.length > 0 && (
                 <optgroup label="Sin autorización (candado)">
-                  {bloqueadas.map((p) => <option key={p.id} value={p.id}>🔒 {p.nombre_puesto} · {p.area} ({p.nivel})</option>)}
+                  {bloqueadas.map((p) => <option key={p.id} value={p.id}>{p.nombre_puesto} · {p.area} ({p.nivel})</option>)}
                 </optgroup>
               )}
             </select>

@@ -13,7 +13,7 @@ export async function PantallaCandidatos({
   vacanteId,
   puedeCargar,
 }: {
-  base: "/hm/candidatos" | "/at/candidatos";
+  base: "/hm/candidatos" | "/at/candidatos" | "/hrbp/candidatos";
   vacanteId?: string;
   puedeCargar: boolean;
 }) {

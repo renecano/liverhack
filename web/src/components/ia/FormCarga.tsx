@@ -249,7 +249,7 @@ export function FormCarga({ vacantes, hrefLista }: { vacantes: { id: string; tit
           <div className="animate-drawer surface relative overflow-hidden rounded-3xl p-6 sm:p-7">
             <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-liv/15 blur-3xl" />
             <div className="relative flex items-baseline justify-between gap-3">
-              <p className="text-[20px] font-semibold tracking-[-0.02em]">Ficha generada ✨</p>
+              <p className="text-[20px] font-semibold tracking-[-0.02em]">Ficha generada</p>
               <p className="tabular font-mono text-[11px] text-stone-400">
                 {resp.modelo} · {resp.intentos} intento{resp.intentos > 1 ? "s" : ""}
               </p>

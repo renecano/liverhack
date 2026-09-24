@@ -32,7 +32,7 @@ function Barra({ valor }: { valor: number | null }) {
   );
 }
 
-// base: ruta de la lista según el rol ("/hm/candidatos" o "/at/candidatos").
+// base: ruta de la lista según el rol ("/hm/candidatos", "/at/candidatos" o "/hrbp/candidatos").
 export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base: string }) {
   const [sel, setSel] = useState<string[]>([]);
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -79,7 +79,8 @@ export function ListaCandidatos({ filas, base }: { filas: FilaCandidato[]; base:
               return (
                 <Fragment key={f.id}>
                   <tr
-                    className={`lh-rise border-b border-[var(--lh-rule)] transition-colors duration-300 ${marcado ? "bg-liv-50" : "hover:bg-stone-50/80"}`}
+                    id={`cv-${f.id}`}
+                    className={`lh-rise scroll-mt-28 border-b target:bg-liv-50 target:shadow-[inset_3px_0_0_var(--lh-accent)] border-[var(--lh-rule)] transition-colors duration-300 ${marcado ? "bg-liv-50" : "hover:bg-stone-50/80"}`}
                     style={{ animationDelay: `${i * 35}ms` }}
                   >
                     <td className="px-4 py-3">
