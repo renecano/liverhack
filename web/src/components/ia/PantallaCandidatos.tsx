@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { FileUp } from "lucide-react";
 import { ListaCandidatos } from "@/components/ia/ListaCandidatos";
+import { GlideSelect } from "@/components/ui/GlideSelect";
 import { TemaIA } from "@/components/ia/TemaIA";
 import { listarCandidatos, listarVacantes } from "@/lib/ia/consultas";
 import { createClient } from "@/lib/supabase/server";
@@ -11,7 +13,7 @@ export async function PantallaCandidatos({
   vacanteId,
   puedeCargar,
 }: {
-  base: "/hm/candidatos" | "/at/candidatos";
+  base: "/hm/candidatos" | "/at/candidatos" | "/hrbp/candidatos";
   vacanteId?: string;
   puedeCargar: boolean;
 }) {
@@ -21,39 +23,38 @@ export async function PantallaCandidatos({
 
   return (
     <TemaIA>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="animate-rise mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--lh-accent)]">Lista de candidatos</p>
-          <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">
+          <p className="text-[12px] font-semibold uppercase tracking-[.2em] text-liv">Lista de candidatos</p>
+          <h1 className="mt-2 text-[34px] leading-tight font-semibold tracking-[-0.03em] sm:text-[42px]">
             {vacanteId ? (vacantes.find((v) => v.id === vacanteId)?.titulo ?? "Vacante") : "Todas las vacantes"}
           </h1>
-          <p className="mt-1 text-sm text-[var(--lh-muted)]">
-            <span className="num">{filas.length}</span> candidatos · <span className="num">{referidos}</span> referidos ·
-            selecciona 2 o más para compararlos lado a lado
+          <p className="mt-2 text-[14px] text-stone-500">
+            <span className="tabular font-semibold text-stone-800">{filas.length}</span> candidatos ·{" "}
+            <span className="tabular font-semibold text-liv">{referidos}</span> referidos · selecciona 2 o más para compararlos
+            lado a lado
           </p>
         </div>
         {puedeCargar && (
-          <Link
-            href="/at/carga"
-            className="rounded-sm border border-[var(--lh-ink)] px-4 py-2 text-sm font-medium hover:bg-[var(--lh-ink)] hover:text-white"
-          >
-            + Cargar candidato
+          <Link href="/at/carga" className="press btn-liv inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[14px] font-semibold">
+            <FileUp className="h-4 w-4" /> Cargar candidato
           </Link>
         )}
       </div>
 
-      <nav className="mb-4 flex flex-wrap gap-1.5 text-[13px]" aria-label="Filtrar por vacante">
-        <Chip href={base} activo={!vacanteId}>
-          Todas
-        </Chip>
-        {vacantes.map((v) => (
-          <Chip key={v.id} href={`${base}?vacante=${v.id}`} activo={v.id === vacanteId}>
-            {v.titulo}
-          </Chip>
-        ))}
-      </nav>
+      <div className="mb-4 max-w-full">
+        <GlideSelect
+          size="sm"
+          ariaLabel="Filtrar por vacante"
+          value={vacanteId ?? "todas"}
+          options={[
+            { value: "todas", label: "Todas", href: base },
+            ...vacantes.map((v) => ({ value: v.id, label: v.titulo, href: `${base}?vacante=${v.id}` })),
+          ]}
+        />
+      </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--lh-muted)]">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-stone-500">
         <Leyenda color="var(--lh-ok)">Cumple</Leyenda>
         <Leyenda color="var(--lh-warn)">Parcial</Leyenda>
         <Leyenda color="var(--lh-bad)">No cumple</Leyenda>
@@ -63,26 +64,11 @@ export async function PantallaCandidatos({
       {filas.length ? (
         <ListaCandidatos filas={filas} base={base} />
       ) : (
-        <p className="rounded-md border border-dashed border-[var(--lh-rule)] p-10 text-center text-sm text-[var(--lh-muted)]">
+        <p className="rounded-3xl border border-dashed border-stone-900/10 bg-white/50 p-10 text-center text-sm text-stone-500">
           Esta vacante aún no tiene candidatos.
         </p>
       )}
     </TemaIA>
-  );
-}
-
-function Chip({ href, activo, children }: { href: string; activo: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className={`rounded-full border px-3 py-1 ${
-        activo
-          ? "border-[var(--lh-ink)] bg-[var(--lh-ink)] text-white"
-          : "border-[var(--lh-rule)] bg-[var(--lh-card)] hover:border-[var(--lh-ink-2)]"
-      }`}
-    >
-      {children}
-    </Link>
   );
 }
 

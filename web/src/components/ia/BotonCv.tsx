@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FileText } from "lucide-react";
 import { VisorCv } from "./VisorCv";
 
 export function BotonCv({ candidatoId, nombre }: { candidatoId: string; nombre: string }) {
@@ -9,9 +10,9 @@ export function BotonCv({ candidatoId, nombre }: { candidatoId: string; nombre: 
     <>
       <button
         onClick={() => setAbierto(true)}
-        className="whitespace-nowrap rounded border border-[var(--lh-rule)] px-2.5 py-1 text-xs hover:border-[var(--lh-ink)]"
+        className="press inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white px-2.5 py-1 text-[12px] font-semibold text-stone-700 ring-1 ring-stone-900/10 hover:text-liv-deep hover:ring-liv/40"
       >
-        Ver CV (PDF)
+        <FileText className="h-3.5 w-3.5" /> CV
       </button>
       {abierto && <VisorCv candidatoId={candidatoId} nombre={nombre} onCerrar={() => setAbierto(false)} />}
     </>
