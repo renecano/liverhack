@@ -248,7 +248,9 @@ export async function PantallaComparativa({
                   <Ring valor={c.fit_score} size={64} stroke={6} destacado={c.fit_score === maxFit && maxFit >= 0} label="% compatibilidad (Potencial Global)" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[17px] font-semibold tracking-[-0.01em]">{c.nombre}</p>
+                      <Link href={`${base}/${c.id}`} className="text-[17px] font-semibold tracking-[-0.01em] underline-offset-2 hover:text-liv-deep hover:underline" title={`Ver el detalle de ${c.nombre}`}>
+                        {c.nombre}
+                      </Link>
                       {c.es_referido && <BadgeReferido />}
                     </div>
                     <p className="text-[12.5px] text-stone-500">
