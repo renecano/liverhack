@@ -18,7 +18,7 @@ La postulación externa ya la resuelve su ATS actual (**Aira**). Nosotros hacemo
 4. **Trazabilidad total.** Todo va a `audit_log` (append-only): quién, qué, cuándo, por qué.
 5. **Nada de IA sin fuente.** Cada dato extraído o score cita el documento/fragmento de origen.
 6. **Evaluación sin discriminación.** El Evaluador es **ciego**: no usa nombre, género, edad ni código postal para calificar competencias. La arquitectura incluye un **`fairness_report`** de equidad.
-7. **Lo que NO va (era de otra versión, descartado):** simulación conversacional del puesto, score de "permanencia" por distancia/commute, mascota, framing de "embudo/mercado continuo". Si lo ves en algún borrador, ignóralo.
+7. **Lo que NO va (era de otra versión, descartado):** simulación conversacional del puesto, score de "permanencia" por distancia/commute, framing de "embudo/mercado continuo". Si lo ves en algún borrador, ignóralo.
 
 **Añadidos recientes (ya en los docs):** asistente conversacional para el HM ("¿qué tengo que hacer hoy?", por prioridad), semáforo de 3 estados para los no negociables, badge de prioridad para candidatos referidos, y evaluación ciega + fairness report.
 
