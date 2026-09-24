@@ -1,0 +1,84 @@
+/* Estilos propios del botón "Personalizar con IA" (CSS Module: no dependen del
+   layout ni de las clases de la pantalla que lo use). */
+.raiz {
+  --pia-acento: #c8007f;
+  --pia-tinta: #1c1917;
+  --pia-suave: #78716c;
+  --pia-borde: #e2dcd2;
+  --pia-ok: #15803d;
+  --pia-aviso: #b45309;
+  --pia-error: #b91c1c;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--pia-tinta);
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  border: 0;
+  border-radius: 6px;
+  background: var(--pia-acento);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+.boton:hover:not(:disabled) { filter: brightness(1.1); }
+.boton:focus-visible { outline: 2px solid var(--pia-tinta); outline-offset: 2px; }
+.boton:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.chispa { font-size: 14px; line-height: 1; }
+
+.progreso {
+  height: 4px;
+  width: 100%;
+  min-width: 180px;
+  border-radius: 999px;
+  background: var(--pia-borde);
+  overflow: hidden;
+}
+.barra {
+  height: 100%;
+  background: var(--pia-acento);
+  transition: width 0.25s ease;
+}
+
+.resumen { color: var(--pia-suave); }
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pia-borde);
+  border-radius: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+}
+.fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--pia-borde);
+}
+.fila:last-child { border-bottom: 0; }
+.etiqueta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.estado { white-space: nowrap; font-weight: 600; }
+.ok { color: var(--pia-ok); }
+.aviso { color: var(--pia-aviso); }
+.error { color: var(--pia-error); }
+.pendiente { color: var(--pia-suave); font-weight: 400; }
+
+@media (prefers-reduced-motion: reduce) {
+  .boton, .barra { transition: none; }
+}
