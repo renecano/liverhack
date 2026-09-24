@@ -16,7 +16,7 @@ const INICIO: Record<RolUsuario, string> = {
   hrbp: '/hrbp',
   at: '/at',
   entrevistador: '/entrevistador',
-  admin: '/',
+  admin: '/hrbp',
 };
 
 /** Cabecera común a todas las vistas autenticadas: identidad + cerrar sesión. */
@@ -27,6 +27,6 @@ export function ShellBase({ children, nombre, rolLabel, inicio, nav }: { childre
 /** Shell para roles internos (hm, hrbp, at, entrevistador, admin). */
 export function AppShell({ children, nombre, rol }: { children: ReactNode; nombre: string; rol: RolUsuario }) {
   const inicio = INICIO[rol] ?? '/';
-  const nav = <nav className="hidden gap-4 text-sm font-medium text-slate-600 sm:flex"><Link href={inicio} className="hover:text-[#c8105a]">Inicio</Link>{rol === 'hm' && <Link href="/hm" className="hover:text-[#c8105a]">Mis decisiones</Link>}{rol === 'hrbp' && <Link href="/hrbp" className="hover:text-[#c8105a]">SLA y directorio</Link>}</nav>;
+  const nav = <nav className="hidden gap-4 text-sm font-medium text-slate-600 sm:flex"><Link href={inicio} className="hover:text-[#c8105a]">Inicio</Link>{rol === 'hm' && <Link href="/hm" className="hover:text-[#c8105a]">Mis decisiones</Link>}{(rol === 'hrbp' || rol === 'admin') && <><Link href="/hrbp" className="hover:text-[#c8105a]">SLA y directorio</Link><Link href="/hrbp/equidad" className="hover:text-[#c8105a]">Equidad</Link></>}</nav>;
   return <ShellBase nombre={nombre} rolLabel={NOMBRE_ROL[rol]} inicio={inicio} nav={nav}>{children}</ShellBase>;
 }

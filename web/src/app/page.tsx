@@ -10,5 +10,6 @@ export default async function Home() {
   if (perfil?.rol === 'hrbp') redirect('/hrbp');
   if (perfil?.rol === 'at') redirect('/at');
   if (perfil?.rol === 'entrevistador') redirect('/entrevistador');
+  if (perfil?.rol === 'admin') redirect('/hrbp');
   redirect('/login');
 }
