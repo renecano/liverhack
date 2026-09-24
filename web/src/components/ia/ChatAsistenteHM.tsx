@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUpRight, Send, Sparkles } from "lucide-react";
-import { preguntarAsistente } from "@/lib/actions/asistente";
+import { candidatosParaLiv, preguntarAsistente } from "@/lib/actions/asistente";
+import { aplicarNombre, sugerirNombres, type OpcionNombre } from "@/lib/ia/autocompletar";
 import type { RolUsuario } from "@/lib/supabase/types";
 
 type Mensaje =
@@ -37,6 +38,47 @@ export function ChatAsistenteHM({ rol = "hm", semilla }: { rol?: RolUsuario; sem
   const [pensando, setPensando] = useState(false);
   const fin = useRef<HTMLDivElement>(null);
   const ocupado = useRef(false);
+
+  // Autocompletado de nombres: se cargan una vez, al empezar a escribir (mismo alcance que Liv).
+  const [nombres, setNombres] = useState<OpcionNombre[] | null>(null);
+  const pidiendoNombres = useRef(false);
+  const [resaltado, setResaltado] = useState(-1);
+  const [cerrada, setCerrada] = useState(false);
+  const listaId = useId();
+  const sugerencia = !cerrada && nombres ? sugerirNombres(texto, nombres) : null;
+  const opciones = sugerencia?.opciones ?? [];
+
+  function escribir(valor: string) {
+    setTexto(valor);
+    setResaltado(-1);
+    setCerrada(false);
+    if (!nombres && !pidiendoNombres.current && valor.trim()) {
+      pidiendoNombres.current = true;
+      candidatosParaLiv()
+        .then(setNombres)
+        .catch(() => setNombres([]));
+    }
+  }
+  function elegir(o: OpcionNombre) {
+    if (!sugerencia) return;
+    setTexto(aplicarNombre(texto, sugerencia, o));
+    setResaltado(-1);
+  }
+  function alTeclear(e: KeyboardEvent<HTMLInputElement>) {
+    if (!opciones.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = opciones.length;
+      setResaltado((i) => (e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n));
+    } else if (e.key === "Tab" || (e.key === "Enter" && resaltado >= 0)) {
+      // Tab toma la primera; Enter solo si se eligió con las flechas (si no, envía la pregunta).
+      e.preventDefault();
+      elegir(opciones[Math.max(resaltado, 0)]);
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      setCerrada(true);
+    }
+  }
 
   async function preguntar(pregunta: string) {
     const q = pregunta.trim();
@@ -145,11 +187,47 @@ export function ChatAsistenteHM({ rol = "hm", semilla }: { rol?: RolUsuario; sem
         )}
         <div ref={fin} />
       </div>
-      <form onSubmit={enviar} className="border-t hairline bg-white/70 p-3">
+      <form onSubmit={enviar} className="relative border-t hairline bg-white/70 p-3">
+        {opciones.length > 0 && (
+          <ul
+            id={listaId}
+            role="listbox"
+            aria-label="Candidatos que coinciden"
+            className="animate-rise absolute inset-x-3 bottom-full mb-1.5 overflow-hidden rounded-2xl border border-stone-900/[0.08] bg-white py-1 shadow-[0_18px_40px_-16px_rgb(17_24_39/0.35)]"
+          >
+            {opciones.map((o, i) => (
+              <li
+                key={`${o.nombre}|${o.vacante}`}
+                id={`${listaId}-${i}`}
+                role="option"
+                aria-selected={i === resaltado}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // conserva el foco en el campo
+                  elegir(o);
+                }}
+                onMouseEnter={() => setResaltado(i)}
+                className={`flex cursor-pointer items-baseline justify-between gap-3 px-3.5 py-2 text-[13px] ${i === resaltado ? "bg-liv-50 text-liv-deep" : "text-stone-700"}`}
+              >
+                <span className="font-semibold">{o.nombre}</span>
+                <span className="truncate text-[11.5px] text-stone-400">{o.vacante}</span>
+              </li>
+            ))}
+            <li aria-hidden className="border-t hairline px-3.5 pt-1.5 pb-1 text-[10.5px] text-stone-400">Tab para completar · ↑↓ para elegir</li>
+          </ul>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-stone-900/10 bg-white py-1 pl-4 pr-1 shadow-sm focus-within:border-liv/50 focus-within:ring-4 focus-within:ring-liv/10">
           <input
             value={texto}
-            onChange={(e) => setTexto(e.target.value)}
+            onChange={(e) => escribir(e.target.value)}
+            onKeyDown={alTeclear}
+            onBlur={() => setCerrada(true)}
+            onFocus={() => setCerrada(false)}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={opciones.length > 0}
+            aria-controls={listaId}
+            aria-activedescendant={resaltado >= 0 ? `${listaId}-${resaltado}` : undefined}
+            autoComplete="off"
             maxLength={500}
             placeholder="Pregunta sobre tus vacantes…"
             aria-label="Pregunta para el asistente"

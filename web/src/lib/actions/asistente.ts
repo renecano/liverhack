@@ -19,6 +19,51 @@ const COLUMNA_ROL: Partial<Record<RolUsuario, "hm_id" | "at_id" | "hrbp_id">> = 
 const ROLES_LIV: RolUsuario[] = ["hm", "at", "hrbp", "admin"];
 
 type Respuesta = ({ ok: true } & ResultadoAsistente) | { ok: false; error: string };
+type Sesion = NonNullable<Awaited<ReturnType<typeof sesion>>>;
+
+/** Ids de las vacantes que le tocan a quien pregunta por su rol, visibles por RLS (admin: todas). */
+async function vacantesDelRol(s: Sesion, soloActivas = false): Promise<string[]> {
+  let q = s.supabase.from("vacantes").select("id");
+  const columna = COLUMNA_ROL[s.usuario.rol];
+  if (columna) q = q.eq(columna, s.usuario.id);
+  if (soloActivas) q = q.in("estatus", ["abierta", "en_proceso"]);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((v) => v.id as string);
+}
+
+/**
+ * Nombres de candidatos para autocompletar en el chat de Liv: mismo alcance que las
+ * respuestas (vacantes activas de su rol, lectura con sesión/RLS). Solo nombre y vacante.
+ */
+export async function candidatosParaLiv(): Promise<{ nombre: string; vacante: string }[]> {
+  const s = await sesion();
+  if (!s || !ROLES_LIV.includes(s.usuario.rol)) return [];
+  try {
+    const ids = await vacantesDelRol(s, true);
+    if (!ids.length) return [];
+    const { data, error } = await s.supabase
+      .from("candidato_vacante")
+      .select("estatus, candidatos(nombre), vacantes(titulo)")
+      .in("vacante_id", ids)
+      .neq("estatus", "descartado")
+      .limit(300);
+    if (error) return [];
+    const uno = <T,>(x: T | T[] | null): T | null => (Array.isArray(x) ? (x[0] ?? null) : x);
+    const vistos = new Set<string>();
+    const lista: { nombre: string; vacante: string }[] = [];
+    for (const f of (data ?? []) as { candidatos: { nombre: string } | { nombre: string }[] | null; vacantes: { titulo: string } | { titulo: string }[] | null }[]) {
+      const nombre = uno(f.candidatos)?.nombre;
+      const vacante = uno(f.vacantes)?.titulo ?? "";
+      if (!nombre || vistos.has(`${nombre}|${vacante}`)) continue;
+      vistos.add(`${nombre}|${vacante}`);
+      lista.push({ nombre, vacante });
+    }
+    return lista.sort((x, y) => x.nombre.localeCompare(y.nombre, "es"));
+  } catch {
+    return [];
+  }
+}
 
 export async function preguntarAsistente(pregunta: string): Promise<Respuesta> {
   const s = await sesion();
@@ -29,12 +74,7 @@ export async function preguntarAsistente(pregunta: string): Promise<Respuesta> {
 
   try {
     // Vacantes visibles por RLS que le tocan por su rol (admin: todas las visibles).
-    let q = s.supabase.from("vacantes").select("id");
-    const columna = COLUMNA_ROL[s.usuario.rol];
-    if (columna) q = q.eq(columna, s.usuario.id);
-    const { data: visibles, error } = await q;
-    if (error) throw new Error(error.message);
-    const ids = (visibles ?? []).map((v) => v.id as string);
+    const ids = await vacantesDelRol(s);
 
     // Solo vacantes activas (resumenVacantes excluye cubiertas/canceladas).
     const vacantes = ids.length ? await resumenVacantes({ db: createAdminClient(), ids }) : [];
