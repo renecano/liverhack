@@ -4,6 +4,7 @@ import type { RolUsuario } from '@/lib/supabase/types';
 import { Copiloto } from '@/components/copiloto/Copiloto';
 import { LogoutButton } from './logout-button';
 import { NavRol, type ItemNav } from './nav-rol';
+import { NotificationBell } from './NotificationBell';
 
 export const NOMBRE_ROL: Record<RolUsuario, string> = {
   hm: 'Hiring Manager',
@@ -67,7 +68,7 @@ export function Marca({ className = '' }: { className?: string }) {
   );
 }
 
-/** Cabecera común a todas las vistas autenticadas: identidad + cerrar sesión. */
+/** Cabecera común a todas las vistas autenticadas: identidad + notificaciones + cerrar sesión. */
 export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra }: { children: ReactNode; nombre: string; rolLabel: string; inicio: string; nav?: ReactNode; extra?: ReactNode }) {
   return (
     <div className="ambient min-h-screen text-stone-900">
@@ -79,7 +80,7 @@ export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra }: { 
             </Link>
             <div className="hidden min-w-0 md:block">{nav}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
             <div className="hidden text-right leading-tight sm:block">
               <p className="text-[13px] font-semibold">{nombre}</p>
               <p className="text-[11px] font-medium uppercase tracking-[.14em] text-stone-400">{rolLabel}</p>
@@ -87,6 +88,7 @@ export function ShellBase({ children, nombre, rolLabel, inicio, nav, extra }: { 
             <span className="grid h-9 w-9 place-items-center rounded-full bg-stone-950 text-[12px] font-semibold text-white ring-2 ring-white">
               {iniciales(nombre) || '·'}
             </span>
+            <NotificationBell />
             <LogoutButton />
           </div>
         </div>
