@@ -623,6 +623,82 @@ insert into audit_log (ts, actor_id, actor_rol, accion, entidad, entidad_id, det
    '{"etapa":"atraccion","dias_vencidos":4,"escalado_a":"hrbp"}'::jsonb, null);
 
 -- ---------------------------------------------------------------------------
+-- 15b. datos ilustrativos para la señal de equidad en demo
+--      NO es un proceso real ni un sesgo real: son datos de ejemplo para que
+--      /hrbp/equidad muestre como el sistema detectaria una diferencia por fuente.
+--      Una vacante YA CUBIERTA de HRBP (las vistas de pipeline, comparativa,
+--      dashboards, asistente y sugeridor solo leen vacantes abiertas/en_proceso)
+--      con 6 candidatos: 3 referidos que avanzan y 3 de bolsa de los que avanza 1.
+--      Con el resto del seed: Referido 3/3 con resultado avanzan (100 %) y
+--      Bolsa 2/6 (33 %) -> regla 4/5 -> "posible sesgo" en Bolsa de trabajo.
+--      Todos en el rango de $60k a $100k y con licenciatura, para que la senal
+--      quede solo en la dimension fuente.
+--      Idempotente (ids fijos + on conflict do nothing): se puede correr tal cual
+--      en el hosted ya poblado.
+-- ---------------------------------------------------------------------------
+insert into vacantes (
+  id, posicion_id, titulo, descripcion, rango_salarial_min, rango_salarial_max, nivel,
+  hm_id, hrbp_id, at_id, estatus, etapa_actual, estado_proceso,
+  fecha_apertura, fecha_estimada_cobertura, alineacion_ok, alineacion_notas, fuente_referidos
+) values
+  ('33333333-3333-3333-3333-000000000901',
+   '22222222-2222-2222-2222-000000000005',
+   'HR Business Partner Operaciones (ejemplo equidad)',
+   'Vacante de EJEMPLO ya cubierta. Datos ilustrativos para demostrar el reporte de equidad; no corresponde a un proceso real.',
+   60000, 80000, 'alto',
+   '11111111-1111-1111-1111-111111111101', '11111111-1111-1111-1111-111111111103', '11111111-1111-1111-1111-111111111102',
+   'cubierta', 'oferta', 'CUBIERTA',
+   current_date - 120, current_date - 62, true, 'Sin alertas.', true)
+on conflict (id) do nothing;
+
+insert into candidatos (
+  id, nombre, email, telefono, fuente, puesto_actual, empresa_actual,
+  compensacion_actual, compensacion_deseada, escolaridad, cv_url
+) values
+  ('55555555-5555-5555-5555-000000000901', 'Paola Guzman',      'paola.guzman.ejemplo@example.com',      '+52 55 1000 0901', 'referido', 'HR Business Partner',          'Grupo Comercial Norte', 64000, 74000, 'Lic. en Psicologia (UNAM)',                  null),
+  ('55555555-5555-5555-5555-000000000902', 'Andres Villalobos', 'andres.villalobos.ejemplo@example.com', '+52 55 1000 0902', 'referido', 'Generalista de RH',            'Logistica Express MX',  70000, 78000, 'Lic. en Relaciones Industriales (Ibero)',    null),
+  ('55555555-5555-5555-5555-000000000903', 'Regina Ibarra',     'regina.ibarra.ejemplo@example.com',     '+52 55 1000 0903', 'referido', 'Coordinadora de Talento',      'Retail Sur',            62000, 70000, 'Lic. en Administracion de Empresas (UVM)',   null),
+  ('55555555-5555-5555-5555-000000000904', 'Hector Ramirez',    'hector.ramirez.ejemplo@example.com',    '+52 55 1000 0904', 'bolsa',    'HR Business Partner',          'Manufacturas del Bajio',66000, 75000, 'Lic. en Psicologia Organizacional (UAM)',    null),
+  ('55555555-5555-5555-5555-000000000905', 'Diana Cervantes',   'diana.cervantes.ejemplo@example.com',   '+52 55 1000 0905', 'bolsa',    'Especialista en Nomina',       'Servicios Integrales',  61000, 68000, 'Lic. en Derecho (UNAM)',                     null),
+  ('55555555-5555-5555-5555-000000000906', 'Luis Arriaga',      'luis.arriaga.ejemplo@example.com',      '+52 55 1000 0906', 'bolsa',    'Jefe de Capacitacion',         'Cadena Hotelera Centro',67000, 79000, 'Lic. en Administracion (IPN)',               null)
+on conflict (id) do nothing;
+
+-- es_referido y prioridad los pone el trigger trg_sync_es_referido.
+insert into candidato_vacante (candidato_id, vacante_id, etapa, estatus, fit_score, compatibilidad_nnn) values
+  ('55555555-5555-5555-5555-000000000901', '33333333-3333-3333-3333-000000000901', 'oferta',    'contratado', 88, 100),
+  ('55555555-5555-5555-5555-000000000902', '33333333-3333-3333-3333-000000000901', 'seleccion', 'descartado', 84, 100),
+  ('55555555-5555-5555-5555-000000000903', '33333333-3333-3333-3333-000000000901', 'seleccion', 'descartado', 81, 100),
+  ('55555555-5555-5555-5555-000000000904', '33333333-3333-3333-3333-000000000901', 'seleccion', 'descartado', 86, 100),
+  ('55555555-5555-5555-5555-000000000905', '33333333-3333-3333-3333-000000000901', 'seleccion', 'descartado', 83, 67),
+  ('55555555-5555-5555-5555-000000000906', '33333333-3333-3333-3333-000000000901', 'seleccion', 'descartado', 85, 67)
+on conflict on constraint candidato_vacante_unico do nothing;
+
+-- Finalistas: los 3 referidos y Hector (bolsa). Diana y Luis (bolsa) se descartan
+-- antes. Paola pasa a oferta; los otros finalistas se cierran al cubrirse la vacante.
+insert into decisiones (id, vacante_id, candidato_id, hm_id, decision, justificacion, ts) values
+  ('88888888-8888-8888-8888-000000000901','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000901','11111111-1111-1111-1111-111111111101',
+   'finalista', 'Cumple los tres no negociables y tuvo consenso de recomendacion en panel.', (current_date-80)::timestamptz + time '10:00'),
+  ('88888888-8888-8888-8888-000000000902','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000902','11111111-1111-1111-1111-111111111101',
+   'finalista', 'Solida experiencia en relaciones laborales; buen desempeno en el caso practico.', (current_date-80)::timestamptz + time '10:05'),
+  ('88888888-8888-8888-8888-000000000903','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000903','11111111-1111-1111-1111-111111111101',
+   'finalista', 'Cumple los no negociables; destaca en consultoria interna.', (current_date-80)::timestamptz + time '10:10'),
+  ('88888888-8888-8888-8888-000000000904','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000904','11111111-1111-1111-1111-111111111101',
+   'finalista', 'Cumple los no negociables; experiencia comparable en planta y operaciones.', (current_date-80)::timestamptz + time '10:15'),
+  ('88888888-8888-8888-8888-000000000905','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000905','11111111-1111-1111-1111-111111111101',
+   'descartado', 'Su experiencia es en nomina; no cubre el no negociable de relaciones laborales. Se le sugieren vacantes de compensaciones.', (current_date-85)::timestamptz + time '12:00'),
+  ('88888888-8888-8888-8888-000000000906','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000906','11111111-1111-1111-1111-111111111101',
+   'descartado', 'Perfil enfocado en capacitacion; sin experiencia de consultoria con direcciones de area, que es no negociable.', (current_date-85)::timestamptz + time '12:10'),
+  ('88888888-8888-8888-8888-000000000907','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000901','11111111-1111-1111-1111-111111111101',
+   'avanzar_oferta', 'Mejor ajuste a la operacion de centros de distribucion y mayor experiencia en reestructuras.', (current_date-70)::timestamptz + time '09:00'),
+  ('88888888-8888-8888-8888-000000000908','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000902','11111111-1111-1111-1111-111111111101',
+   'descartado', 'Vacante cubierta con otra finalista; queda en pool para la siguiente apertura de HRBP.', (current_date-62)::timestamptz + time '11:00'),
+  ('88888888-8888-8888-8888-000000000909','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000903','11111111-1111-1111-1111-111111111101',
+   'descartado', 'Vacante cubierta con otra finalista; queda en pool para la siguiente apertura de HRBP.', (current_date-62)::timestamptz + time '11:05'),
+  ('88888888-8888-8888-8888-000000000910','33333333-3333-3333-3333-000000000901','55555555-5555-5555-5555-000000000904','11111111-1111-1111-1111-111111111101',
+   'descartado', 'Vacante cubierta con otra finalista; queda en pool para la siguiente apertura de HRBP.', (current_date-62)::timestamptz + time '11:10')
+on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------------
 -- 16. Verificacion rapida del candado (no inserta nada; solo deja constancia)
 -- ---------------------------------------------------------------------------
 do $$
