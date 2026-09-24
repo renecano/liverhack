@@ -127,6 +127,7 @@ export async function listarVacantes(db: SupabaseClient) {
   const { data, error } = await db
     .from("vacantes")
     .select("id, titulo, etapa_actual, estatus")
+    .in("estatus", ["abierta", "en_proceso"])
     .order("fecha_apertura", { ascending: false });
   if (error) throw new Error(error.message);
   return data as { id: string; titulo: string; etapa_actual: string; estatus: string }[];
