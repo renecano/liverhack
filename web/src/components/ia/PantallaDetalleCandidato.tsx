@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import { BadgeReferido } from "@/components/ia/BadgeReferido";
+import { HistorialCandidato } from "@/components/ia/HistorialCandidato";
 import { SemaforoDetalle } from "@/components/ia/Semaforo";
 import { TemaIA } from "@/components/ia/TemaIA";
 import { VisorCvInline } from "@/components/ia/VisorCv";
@@ -44,19 +45,16 @@ function Bloque({ titulo, children, className = "" }: { titulo: string; children
 
 /**
  * Detalle completo de un candidato en una vacante (candidato_vacante.id): ficha desglosada,
- * semáforo de no negociables con evidencia, scores y CV. Lee con el cliente de SESIÓN (RLS):
+ * semáforo de no negociables con evidencia, scores, historial y CV. Lee con el cliente de SESIÓN (RLS):
  * si el usuario no ve al candidato, 404. Solo muestra datos existentes.
  */
 export async function PantallaDetalleCandidato({
   base,
   id,
-  historial,
   extra,
 }: {
   base: "/hm/candidatos" | "/at/candidatos" | "/hrbp/candidatos";
   id: string;
-  /** Sección de historial (decisiones y entrevistas), si se muestra. */
-  historial?: ReactNode;
   /** Panel adicional debajo de la ficha (p. ej. el análisis de Liv para el AT). */
   extra?: ReactNode;
 }) {
@@ -186,7 +184,7 @@ export async function PantallaDetalleCandidato({
             ) : null}
 
             {extra}
-            {historial}
+            <HistorialCandidato candidatoId={c.candidato_id} vacanteActual={c.vacante_titulo} />
           </div>
 
           <aside className="h-[640px] xl:sticky xl:top-24 xl:h-[calc(100vh-8rem)]">
