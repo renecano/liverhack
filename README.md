@@ -1,71 +1,51 @@
-# LivHire — Copiloto de Atracción de Talento
+# LivHire — Talent Acquisition Copilot
 ### LiverHack 2026 · El Puerto de Liverpool
 
-## Propósito
+## Purpose
 
-LivHire es una plataforma web **interna** que unifica y da proactividad al proceso de
-atracción de talento de El Puerto de Liverpool (corporativo y centros de distribución),
-desde la **requisición hasta la oferta**. No es una app para el candidato de piso ni
-reemplaza el ATS externo (**Aira**), que ya resuelve la postulación: LivHire es el
-**copiloto del proceso interno** para tres roles:
+LivHire is an **internal** web platform that unifies and adds proactivity to El Puerto de Liverpool's talent acquisition process (corporate and distribution centers), from **requisition to offer**. It is not an app for floor candidates, nor does it replace the external ATS (**Aira**), which already handles applications: LivHire is the **copilot for the internal process** for three roles:
 
-- **HM (Hiring Manager):** abre la vacante y decide. No tiene tiempo de leer expedientes;
-  necesita comparar y decidir en pocos clics.
-- **AT (Atracción de Talento / Reclutador):** opera el proceso, carga candidatos y
-  evaluaciones, agenda, comunica.
-- **HRBP (HR Business Partner):** socio estratégico; necesita directorio y visibilidad de
-  SLA por área.
-- **Entrevistador:** califica candidatos (puede haber varios por sesión).
+- **HM (Hiring Manager):** opens the requisition and makes decisions. Has no time to read lengthy files; needs to compare and decide in just a few clicks.
+- **AT (Talent Acquisition / Recruiter):** operates the process, loads candidates and assessments, schedules, communicates.
+- **HRBP (HR Business Partner):** strategic partner; needs a directory and SLA visibility by area.
+- **Interviewer:** evaluates candidates (there may be several per session).
 
-## El problema que resolvemos
+## The problem we solve
 
-Con ~180 vacantes activas gestionadas desde corporativo y un time-to-fill promedio de
-**45 días**, Liverpool pidió un ecosistema que **estandarice la gestión de candidatos**,
-**garantice trazabilidad** y **promueva la comunicación entre reclutadores**. Los dolores
-concretos: el HM no sabe en qué va su proceso ni quién lo bloquea; la comparación de
-candidatos vive en un Excel manual (AssessFirst); de ~300 candidatos, la mayoría nunca
-recibe respuesta.
+With ~180 active openings managed from corporate and an average time-to-fill of **45 days**, Liverpool asked for an ecosystem that **standardizes candidate management**, **guarantees traceability**, and **promotes communication between recruiters**. The concrete pain points: the HM doesn't know where their process stands or who's blocking it; candidate comparison lives in a manual spreadsheet (AssessFirst); of ~300 candidates, most never receive a response.
 
-## Nuestros diferenciadores
+## Our differentiators
 
-- **Gobernanza human-in-the-loop real:** la IA nunca rechaza ni hace ofertas sola; toda
-  decisión irreversible la toma un humano, **con justificación obligatoria**.
-- **Cero ghosting por construcción:** cada cambio de etapa dispara notificación —
-  la IA redacta, un humano aprueba, se envía.
-- **Comparativa automática con evidencia citada:** la ficha de cada candidato se llena
-  desde el CV y evaluaciones, y cada afirmación cita su fuente.
-- **Evaluación sin discriminación:** el evaluador es ciego a nombre, género, edad y
-  código postal; hay un `fairness_report` que audita sesgos por grupo.
-- **Candado de posición:** no se abre proceso si la vacante no está autorizada.
-- **Rescate de "medallistas de plata":** un candidato bien evaluado que no ganó una
-  vacante se re-empareja automáticamente con nuevas requisiciones, sin repetir la
-  búsqueda desde cero.
-- **Acciones reales:** agenda en Google Calendar real (OAuth) y envía correo real
-  (Resend), con degradación elegante a modo simulado si faltan credenciales.
-- **Infraestructura, no solo app:** el mismo cerebro se consulta desde Claude Desktop
-  vía MCP.
-- **Trazabilidad total:** todo cambio relevante queda en un `audit_log` append-only.
+- **Real human-in-the-loop governance:** the AI never rejects or makes offers on its own; every irreversible decision is made by a human, **with a mandatory justification**.
+- **Zero ghosting by design:** every stage change triggers a notification — the AI drafts it, a human approves it, and it's sent.
+- **Automatic comparison with cited evidence:** each candidate's profile is filled in from their CV and assessments, and every claim cites its source.
+- **Bias-free evaluation:** the evaluator is blind to name, gender, age, and postal code; a `fairness_report` audits bias by group.
+- **Position lock:** a process can't be opened if the opening isn't authorized.
+- **"Silver medalist" rescue:** a well-evaluated candidate who didn't win an opening is automatically re-matched with new requisitions, without repeating the search from scratch.
+- **Real actions:** schedules on real Google Calendar (OAuth) and sends real email (Resend), with graceful degradation to simulated mode if credentials are missing.
+- **Infrastructure, not just an app:** the same brain can be queried from Claude Desktop via MCP.
+- **Full traceability:** every relevant change is recorded in an append-only `audit_log`.
 
-## Lenguajes y stack
+## Languages and stack
 
-| Capa | Tecnología |
+| Layer | Technology |
 |---|---|
 | Frontend | Next.js 16 (App Router) + React 19 + **TypeScript** + Tailwind CSS 4 |
-| Backend de dominio | TypeScript, dentro del monolito `web/` (orquestador, sla, ia, acciones) |
-| Base de datos | Supabase (Postgres, Auth, Realtime, Storage) |
-| IA | OpenAI API (chat + `text-embedding-3-small`), validación con `zod` |
-| Acciones reales | `googleapis` (Calendar, OAuth2), `resend` (correo) |
-| Lectura de CVs | `pdf-parse` |
-| Servidor MCP | Node.js + TypeScript, `@modelcontextprotocol/sdk`, stdio |
-| Calidad | ESLint, TypeScript estricto, scripts de verificación end-to-end |
+| Domain backend | TypeScript, inside the `web/` monolith (orchestrator, sla, ia, actions) |
+| Database | Supabase (Postgres, Auth, Realtime, Storage) |
+| AI | OpenAI API (chat + `text-embedding-3-small`), validation with `zod` |
+| Real actions | `googleapis` (Calendar, OAuth2), `resend` (email) |
+| CV reading | `pdf-parse` |
+| MCP server | Node.js + TypeScript, `@modelcontextprotocol/sdk`, stdio |
+| Quality | ESLint, strict TypeScript, end-to-end verification scripts |
 
-## Requisitos
+## Requirements
 
 - Node.js **20.12+**
-- Cuenta de Supabase (gratis)
-- (Opcional) API key de OpenAI, de Resend y credenciales OAuth de Google Cloud
+- A Supabase account (free)
+- (Optional) An OpenAI API key, a Resend key, and Google Cloud OAuth credentials
 
-## Cuentas y credenciales
+## Accounts and credentials
 
 - aileen.vargas@liverpool.com.mx
 - daniela.rios@liverpool.com.mx
@@ -75,61 +55,56 @@ recibe respuesta.
 - juan.perez@liverpool.com.mx
 - admin@liverpool.com.mx
 
-Contraseña:
+Password:
 Liverhack2026!
 
-## 1. Base de datos (Supabase)
+## 1. Database (Supabase)
 
-1. Crea un proyecto en supabase.com.
-2. Aplica las migraciones **en este orden exacto** (SQL Editor del panel, o `supabase db push` si tienes la CLI conectada):
+1. Create a project at supabase.com.
+2. Apply the migrations **in this exact order** (SQL Editor in the dashboard, or `supabase db push` if you have the CLI connected):
+- supabase/migrations/20260923191654_init_schema.sql
+- supabase/migrations/20260923204457_estado_proceso_vacantes.sql
+- supabase/migrations/20260923221237_campos_constraints_ia.sql
+- supabase/migrations/20260924120000_google_conexiones.sql
+3. Load `supabase/seed.sql` **after** the 4 migrations (10 candidates, users, openings, and test notifications).
 
-supabase/migrations/20260923191654_init_schema.sql
-supabase/migrations/20260923204457_estado_proceso_vacantes.sql
-supabase/migrations/20260923221237_campos_constraints_ia.sql
-supabase/migrations/20260924120000_google_conexiones.sql
-
-3. Carga `supabase/seed.sql` **después** de las 4 migraciones (10 candidatos, usuarios, vacantes y notificaciones de prueba).
-
-## 2. Variables de entorno
+## 2. Environment variables
 
 ```bash
 cd web
 cp .env.example .env.local
 ```
 
-Edita `web/.env.local`:
+Edit `web/.env.local`:
 
 ```bash
-# Supabase — obligatorias para levantar la app
+# Supabase — required to run the app
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# IA — sin esto la app levanta, pero toda función de IA
-# (carga de CV, ficha automática, comparativa, asistente del HM) falla al usarse
+# AI — without this the app boots, but every AI feature
+# (CV upload, automatic profile, comparison, HM assistant) fails when used
 OPENAI_API_KEY=
 
-# Correo real (opcional)
+# Real email (optional)
 RESEND_API_KEY=
 EMAIL_FROM="LivHire <onboarding@resend.dev>"
 
-# Google Calendar real (opcional)
+# Real Google Calendar (optional)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/google/callback
 GOOGLE_CALENDAR_SEND_UPDATES=none
 
-# Gobernanza
+# Governance
 MAX_USD_DIA=10
-ACTIONS_MODE=mock   # "real" para correo/calendario reales; requiere las llaves de arriba
+ACTIONS_MODE=mock   # "real" for real email/calendar; requires the keys above
 ```
 
-Todas las llaves y URLs (Supabase, OpenAI, Resend, Google) se obtienen desde el panel de
-cada servicio: Supabase → Project Settings → API; OpenAI → platform.openai.com/api-keys;
-Resend → resend.com/api-keys; Google → Google Cloud Console → credenciales OAuth 2.0
-(agrega `http://localhost:3000/api/google/callback` como Redirect URI autorizado).
+All keys and URLs (Supabase, OpenAI, Resend, Google) are obtained from each service's dashboard: Supabase → Project Settings → API; OpenAI → platform.openai.com/api-keys; Resend → resend.com/api-keys; Google → Google Cloud Console → OAuth 2.0 credentials (add `http://localhost:3000/api/google/callback` as an authorized Redirect URI).
 
-## 3. Instalar y correr
+## 3. Install and run
 
 ```bash
 cd web
@@ -137,53 +112,49 @@ npm install
 npm run dev
 ```
 
-Abre `http://localhost:3000`.
+Open `http://localhost:3000`.
 
-## 4. Usuarios de prueba (Supabase Auth)
+## 4. Test users (Supabase Auth)
 
 ```bash
 npm run seed:auth
 ```
 
-Sincroniza los `usuarios` del seed con Supabase Auth. Contraseña común: `Liverhack2026!`
-(cámbiala con `DEMO_PASSWORD=... npm run seed:auth`).
+Syncs the seed `users` with Supabase Auth. Common password: `Liverhack2026!` (change it with `DEMO_PASSWORD=... npm run seed:auth`).
 
-- `aileen.vargas@liverpool.com.mx` → tablero HM
-- `monica.salinas@liverpool.com.mx` → tablero HRBP
+- `aileen.vargas@liverpool.com.mx` → HM dashboard
+- `monica.salinas@liverpool.com.mx` → HRBP dashboard
 
-## 5. (Opcional) Preparar el camino feliz de la demo
+## 5. (Optional) Prepare the demo happy path
 
 ```bash
 npm run seed:demo
 ```
 
-Deja una vacante en la compuerta `ESPERANDO_HM_DECIDE_FINALISTA` con pool listo, para
-que el HM tenga algo real que decidir sin correr todo el flujo a mano.
+Leaves an opening at the `ESPERANDO_HM_DECIDE_FINALISTA` gate with a ready pool, so the HM has something real to decide without running the whole flow manually.
 
-## 6. (Opcional) Verificar el dominio de proceso sin UI
+## 6. (Optional) Verify the process domain without UI
 
 ```bash
-npm run verify:proceso               # corre y limpia la vacante de prueba
-npm run verify:proceso -- --conservar   # la deja para inspeccionarla
+npm run verify:proceso               # runs and cleans up the test opening
+npm run verify:proceso -- --conservar   # leaves it for inspection
 ```
 
-## 7. (Opcional) Conectar Google Calendar real
+## 7. (Optional) Connect real Google Calendar
 
-Con `ACTIONS_MODE=real` y las credenciales de Google en `.env.local`, el usuario AT debe
-además conectar su cuenta desde `/at/entrevistas` (flujo OAuth) para que las entrevistas
-se agenden como eventos reales. Sin conexión, caen a modo interno automáticamente.
+With `ACTIONS_MODE=real` and the Google credentials in `.env.local`, the AT user must also connect their account from `/at/entrevistas` (OAuth flow) for interviews to be scheduled as real events. Without a connection, they fall back to internal mode automatically.
 
-## 8. (Opcional) Servidor MCP para Claude Desktop
+## 8. (Optional) MCP server for Claude Desktop
 
 ```bash
 cd mcp-server
 npm install
-npm run build      # requiere web/ en el mismo checkout (compila ../web/src)
-npm run token       # imprime MCP_AUTH_TOKEN y su SHA-256
+npm run build      # requires web/ in the same checkout (compiles ../web/src)
+npm run token       # prints MCP_AUTH_TOKEN and its SHA-256
 cp .env.example .env
 ```
 
-Edita `mcp-server/.env`:
+Edit `mcp-server/.env`:
 
 ```bash
 MCP_SUPABASE_URL=
@@ -191,26 +162,24 @@ MCP_SUPABASE_SERVICE_KEY=
 MCP_AUTH_TOKEN_SHA256=
 ```
 
-Conéctalo desde `claude_desktop_config.json` (Settings → Developer → Edit Config en
-Claude Desktop) con el bloque `mcpServers` documentado en `mcp-server/README.md`.
-Reinicia Claude Desktop por completo para que cargue la herramienta.
+Connect it from `claude_desktop_config.json` (Settings → Developer → Edit Config in Claude Desktop) using the `mcpServers` block documented in `mcp-server/README.md`. Restart Claude Desktop completely so it loads the tool.
 
-## Comandos disponibles (`web/`)
+## Available commands (`web/`)
 
-| Comando | Qué hace |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Servidor de desarrollo en `localhost:3000` |
-| `npm run build` | Build de producción |
+| `npm run dev` | Development server at `localhost:3000` |
+| `npm run build` | Production build |
 | `npm run lint` | ESLint |
-| `npm run seed:auth` | Sincroniza usuarios del seed con Supabase Auth |
-| `npm run seed:demo` | Prepara la vacante de demo en su compuerta |
-| `npm run verify:proceso` | Prueba end-to-end del orquestador sin UI |
+| `npm run seed:auth` | Syncs seed users with Supabase Auth |
+| `npm run seed:demo` | Prepares the demo opening at its gate |
+| `npm run verify:proceso` | End-to-end orchestrator test without UI |
 
-## Comandos disponibles (`mcp-server/`)
+## Available commands (`mcp-server/`)
 
-| Comando | Qué hace |
+| Command | What it does |
 |---|---|
-| `npm run build` | Compila el servidor (incluye lógica de `web/src`) |
-| `npm run token` | Genera un `MCP_AUTH_TOKEN` nuevo y su hash |
-| `npm run probar` | Prueba de humo: arranca por stdio y llama a las 4 herramientas |
-| `npm start` | Corre `dist/index.js` |
+| `npm run build` | Compiles the server (includes `web/src` logic) |
+| `npm run token` | Generates a new `MCP_AUTH_TOKEN` and its hash |
+| `npm run probar` | Smoke test: starts over stdio and calls the 4 tools |
+| `npm start` | Runs `dist/index.js` |
